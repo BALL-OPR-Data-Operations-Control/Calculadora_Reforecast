@@ -5,8 +5,11 @@ import numpy as np
 from pathlib import Path
 
 
-KPIS_CANS = ['Spoilage']
-KPIS_ENDS = ['Spoilage']
+KPIS_CANS = ['Metal Can (kg/000)', 'Spoilage(%)', 'Scrap (kg/000)','Varnish Usage (kg/000)','Ink Usage (kg/000)','Inside Spray Usage(kg/000)',
+            'Gas (m³/000) / (kg/000)', 'Thermal (kwh/000)','Consumo de Energia (kwh/000)', 'Variable Light (kwh/000) - Fora Ponta', 'Variable Light (kwh/000) - Ponta','Water & Sewer (m³/000)']
+KPIS_ENDS = ['Metal End (kg/000)','Spoilage (%)','Tab Scrap  (kg/000)','Compound Usage (kg/000)','Consumo de Energia (kwh/000)',
+             'Variable Light (KwH) - Fora Ponta','Variable Light (KwH) - Ponta',
+            'Water & Sewer (m³/000)','Metal Tab (kg/000)','End Scrap (kg/000)']
 
 PLANTAS_CONFIG = {}
 # Plantas de latas
@@ -428,7 +431,7 @@ def main():
                     df_coef_final_mensal_display.loc[colunas_futuro, fmt] = aop_show_future.values
 
         st.subheader("📅 Resultado 2: Metas Mensais Futuras (%)")
-        st.caption("🟦 = YTD | ⬜ = Futuro. Quando cálculo > FY, exibimos os valores da tabela 'AOP (Exibição)' apenas para aquele formato. O 'Geral' permanece calculado normalmente.")
+        #st.caption("🟦 = YTD | ⬜ = Futuro. Quando cálculo > FY, exibimos os valores da tabela 'AOP (Exibição)' apenas para aquele formato. O 'Geral' permanece calculado normalmente.")
         if not df_coef_final_mensal_display.empty:
             styled = style_highlight_ytd(df_coef_final_mensal_display, colunas_ytd).format("{:.3f}%")
             st.dataframe(styled, use_container_width=True)
