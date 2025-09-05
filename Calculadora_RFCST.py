@@ -56,6 +56,34 @@ def set_plant_store(planta: str, plant_state: dict):
     st.session_state['plant_store'][planta] = plant_state
 
 
+# -------------------------------
+# Helpers de locale BR para números
+# -------------------------------
+def _to_float_br(x):
+    """
+    Converte strings no padrão brasileiro para float.
+    Exemplos:
+      "12,25" -> 12.25
+      "1.234,56" -> 1234.56
+    Mantém valores não conversíveis como estão.
+    """
+    if isinstance(x, str):
+        s = x.strip().replace(" ", "")
+        # remove separador de milhar '.', troca decimal ',' por '.'
+        if ',' in s:
+            s = s.replace('.', '').replace(',', '.')
+        # tenta converter
+        try:
+            return float(s)
+        except Exception:
+            return x
+    return x
+
+
+def corrige_decimais_df(df: pd.DataFrame) -> pd.DataFrame:
+    return df.applymap(_to_float_br)
+
+
 def main():
     st.set_page_config(
         page_title="Calculadora de Reforecast",
@@ -63,6 +91,16 @@ def main():
         layout="wide",
         initial_sidebar_state="expanded"
     )
+
+    # --- SIDEBAR (Avisos Importantes) ---
+    with st.sidebar:
+        st.markdown("## ⚠️ Avisos Importantes")
+        st.markdown(
+            "- **Quando a planta performa melhor que o AOP**: manteremos **os valores do AOP** para os meses futuros (ou seja, o AOP é preservado na exibição futura).\n"
+            "- **Regra de bloqueio**: se o **Volume Líquido YTD** exceder o **Volume Líquido FY** (para um KPI/Formato), o cálculo daquele **formato/KPI** não é feito (permanece zero)."
+        )
+        st.markdown("---")
+        st.caption("Cole valores do Excel no formato brasileiro (ex.: `1.234,56`). O app converte automaticamente.")
 
     # --- VARIÁVEIS DE CORES E LOGO ---
     COR_PRIMARIA = "#1140FE"
@@ -235,7 +273,7 @@ def main():
 
     st.markdown("---")
 
-    # --- Passo 4: Dados por Formato (com persistência por planta) ---
+    # --- Passo 4: Dados por Formato ---
     st.header("4️⃣ Dados de Entrada por Formato")
     dados_formatos = {}
     tabs_formatos = st.tabs(plant_state['nomes_formatos'])
@@ -260,6 +298,8 @@ def main():
                 use_container_width=True, num_rows="fixed",
                 column_config=cfg_vol,
             )
+            # CORRIGE VÍRGULA/PONTO
+            df_volume_editado = corrige_decimais_df(df_volume_editado).astype(float)
 
             # AOP principal (contém FY)
             st.markdown("##### 🎯 Coeficientes YTD + Ciclo Anterior")
@@ -277,6 +317,8 @@ def main():
                 use_container_width=True, num_rows="fixed",
                 height=458 if PLANTAS_CONFIG[planta_selecionada]['tipo'] == 'Cans' else 388
             )
+            # CORRIGE VÍRGULA/PONTO
+            df_aop_editado = corrige_decimais_df(df_aop_editado).astype(float)
 
             # AOP (Exibição) — 12 meses (sem FY)
             st.markdown("##### 🧷 AOP (Opcional)")
@@ -294,6 +336,8 @@ def main():
                 num_rows="fixed",
                 height=458 if PLANTAS_CONFIG[planta_selecionada]['tipo'] == 'Cans' else 388
             )
+            # CORRIGE VÍRGULA/PONTO
+            df_aop_show_editado = corrige_decimais_df(df_aop_show_editado).astype(float)
 
             # Salva no estado
             plant_state['dados'][i] = {
@@ -476,14 +520,13 @@ def main():
                             metas_fmt.loc[kpi, colunas_futuro] = aops_show[formato].loc[kpi, colunas_futuro].values
                             aop_melhor_logs.append((formato, kpi))
 
-                    # Exibição do valor anual (colunas = KPIs; uma linha)
+                    # Exibição do valor anual (colunas = KPIs; uma linha) — formatação BR (Spoilage 2c, demais 3c)
                     coef_anual_display = coef_anual_fmt.copy()
                     for kpi in substituir_por_aop:
                         coef_anual_display.loc[kpi] = fy_series.loc[kpi]
 
-                    # Formata uma única linha com KPIs como colunas
                     def _fmt_val(kpi, v):
-                        return f"{float(v):.3f}%" if is_spoilage(kpi) else f"{float(v):.3f}"
+                        return f"{float(v):.2f}%" if is_spoilage(kpi) else f"{float(v):.3f}"
                     linha = {k: _fmt_val(k, coef_anual_display.get(k, 0.0)) for k in kpis_da_planta}
                     df_anual_row = pd.DataFrame([linha], index=["Necessário (FY)"])
 
@@ -498,7 +541,7 @@ def main():
                         out = x.copy()
                         for kpi in out.index:
                             if is_spoilage(kpi):
-                                out.loc[kpi] = out.loc[kpi].map(lambda z: f"{float(z):.3f}%")
+                                out.loc[kpi] = out.loc[kpi].map(lambda z: f"{float(z):.2f}%")
                             else:
                                 out.loc[kpi] = out.loc[kpi].map(lambda z: f"{float(z):.3f}")
                         return out
@@ -589,7 +632,7 @@ def main():
 
                     # Valor Anual (KPIs nas colunas; 1 linha)
                     def _fmt_val(kpi, v):
-                        return f"{float(v):.3f}%" if is_spoilage(kpi) else f"{float(v):.3f}"
+                        return f"{float(v):.2f}%" if is_spoilage(kpi) else f"{float(v):.3f}"
                     linha_geral = {k: _fmt_val(k, geral_coef_anual.get(k, 0.0)) for k in kpis_da_planta}
                     df_anual_row_geral = pd.DataFrame([linha_geral], index=["Necessário (FY)"])
 
@@ -601,7 +644,7 @@ def main():
                         out = x.copy()
                         for kpi in out.index:
                             if is_spoilage(kpi):
-                                out.loc[kpi] = out.loc[kpi].map(lambda z: f"{float(z):.3f}%")
+                                out.loc[kpi] = out.loc[kpi].map(lambda z: f"{float(z):.2f}%")
                             else:
                                 out.loc[kpi] = out.loc[kpi].map(lambda z: f"{float(z):.3f}")
                         return out
@@ -638,7 +681,7 @@ def main():
                         coef_anual_display.loc[kpi] = fy_series.loc[kpi]
 
                     def _fmt_val(kpi, v):
-                        return f"{float(v):.3f}%" if is_spoilage(kpi) else f"{float(v):.3f}"
+                        return f"{float(v):.2f}%" if is_spoilage(kpi) else f"{float(v):.3f}"
                     linha_fmt = {k: _fmt_val(k, coef_anual_display.get(k, 0.0)) for k in kpis_da_planta}
                     df_anual_row_fmt = pd.DataFrame([linha_fmt], index=["Necessário (FY)"])
 
@@ -652,7 +695,7 @@ def main():
                         out = x.copy()
                         for kpi in out.index:
                             if is_spoilage(kpi):
-                                out.loc[kpi] = out.loc[kpi].map(lambda z: f"{float(z):.3f}%")
+                                out.loc[kpi] = out.loc[kpi].map(lambda z: f"{float(z):.2f}%")
                             else:
                                 out.loc[kpi] = out.loc[kpi].map(lambda z: f"{float(z):.3f}")
                         return out
