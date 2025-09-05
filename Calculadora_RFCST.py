@@ -100,7 +100,7 @@ def main():
             "- **Regra de bloqueio**: se o **Volume Líquido YTD** exceder o **Volume Líquido FY** (para um KPI/Formato), o cálculo daquele **formato/KPI** não é feito (permanece zero)."
         )
         st.markdown("---")
-        st.caption("Cole valores do Excel no formato brasileiro (ex.: `1.234,56`). O app converte automaticamente.")
+        #st.caption("Cole valores do Excel no formato brasileiro (ex.: `1.234,56`). O app converte automaticamente.")
 
     # --- VARIÁVEIS DE CORES E LOGO ---
     COR_PRIMARIA = "#1140FE"
@@ -321,7 +321,7 @@ def main():
             df_aop_editado = corrige_decimais_df(df_aop_editado).astype(float)
 
             # AOP (Exibição) — 12 meses (sem FY)
-            st.markdown("##### 🧷 AOP (Opcional)")
+            st.markdown("##### 🧷 AOP ou Ciclo Anterior (Opcional)")
             df_aop_show_default = dados_salvos.get('aop_show', pd.DataFrame(index=kpis_da_planta, columns=MESES).fillna(0.0))
             for m in MESES:
                 if m not in df_aop_show_default.columns:
@@ -714,7 +714,7 @@ def main():
                 for formato, kpi in aop_mantido_melhor_logs:
                     msg_por_formato2.setdefault(formato, []).append(kpi)
                 linhas2 = [f"• {fmt}: " + ", ".join(kpis) for fmt, kpis in msg_por_formato2.items()]
-                st.info("🟦 **AOP (Exibição) mantido no futuro porque o resultado calculado ficou melhor que o AOP**:\n" + "\n".join(linhas2))
+                st.info("🟦 **AOP (Exibição) mantido no futuro porque o realizado ficou melhor que o AOP**:\n" + "\n".join(linhas2))
 
         st.success("✅ Cálculos concluídos com sucesso!")
 
