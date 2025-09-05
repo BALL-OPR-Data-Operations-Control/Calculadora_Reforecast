@@ -260,7 +260,8 @@ def main():
             df_volume_editado = st.data_editor(
                 df_volume_default, key=f"{planta_selecionada}_volume_{i}",
                 use_container_width=True, num_rows="fixed",
-                column_config=cfg_vol
+                column_config=cfg_vol,
+                height=500
             )
 
             # AOP principal (contém FY)
@@ -280,7 +281,7 @@ def main():
             )
 
             # AOP (Exibição) — 12 meses (sem FY)
-            st.markdown("##### 🧷 AOP")
+            st.markdown("##### 🧷 AOP (Opcional)")
             df_aop_show_default = dados_salvos.get('aop_show', pd.DataFrame(index=kpis_da_planta, columns=MESES).fillna(0.0))
             for m in MESES:
                 if m not in df_aop_show_default.columns:
