@@ -319,6 +319,16 @@ def main():
     def is_spoilage(kpi_name: str) -> bool:
         return 'spoilage' in kpi_name.lower()
 
+    def _resultado_melhor_que_aop(metas_calc_row: pd.Series, aop_show_row: pd.Series, kpi_name: str) -> bool:
+        """
+        True se o resultado calculado para os meses FUTUROS for 'melhor' que o AOP.
+        Assumimos 'menor é melhor' (Spoilage/consumos). Ajuste aqui se precisar.
+        """
+        meses = [m for m in colunas_futuro if m in metas_calc_row.index and m in aop_show_row.index]
+        if not meses:
+            return False
+        return (metas_calc_row[meses].astype(float) <= aop_show_row[meses].astype(float)).all()
+
     def calc_kpi_por_formato(formato: str, df_vol: pd.DataFrame, df_aop: pd.DataFrame):
         """
         Retorna:
@@ -437,48 +447,53 @@ def main():
             tab_labels = ['Geral'] + nomes_formatos
             abas = st.tabs(tab_labels)
 
-            # Guardar “AOP foi melhor” para avisos consolidados
-            aop_melhor_logs = []  # (formato, kpi)
+            # Guardar logs de avisos
+            aop_melhor_logs = []           # (formato, kpi) necessário > FY → AOP aplicado
+            aop_mantido_melhor_logs = []   # (formato, kpi) mantido AOP pq resultado calculado ficou melhor que AOP
 
             # ---------- ABA GERAL (primeira) ----------
             with abas[0]:
                 st.subheader("Consolidado Geral")
                 chips_meses(colunas_ytd, colunas_futuro)
 
-                # Caso tenha somente 1 formato: Geral = espelho do formato (incluindo exibição AOP quando necessário)
+                # Caso tenha somente 1 formato: Geral = espelho do formato (incluindo AOP lógico)
                 if len(nomes_formatos) == 1:
                     formato = nomes_formatos[0]
                     coef_anual_fmt = resultados_por_formato[formato]['coef_anual_necessario'].copy()
                     fy_series = aops[formato]['FY'].astype(float).reindex(kpis_da_planta).fillna(0.0)
                     metas_fmt = resultados_por_formato[formato]['metas_futuras'].copy()
 
-                    # KPIs em que necessário > FY → exibir AOP (Exibição) e notificar
+                    # (NOVO) manter AOP quando resultado calculado é melhor que AOP
+                    for kpi in kpis_da_planta:
+                        if _resultado_melhor_que_aop(metas_fmt.loc[kpi], aops_show[formato].loc[kpi], kpi):
+                            metas_fmt.loc[kpi, colunas_futuro] = aops_show[formato].loc[kpi, colunas_futuro].values
+                            aop_mantido_melhor_logs.append((formato, kpi))
+
+                    # AOP aplicado quando necessário > FY
                     substituir_por_aop = fy_series.index[(coef_anual_fmt.fillna(0.0) > fy_series.fillna(0.0))].tolist()
                     if len(colunas_futuro) > 0 and substituir_por_aop:
                         for kpi in substituir_por_aop:
                             metas_fmt.loc[kpi, colunas_futuro] = aops_show[formato].loc[kpi, colunas_futuro].values
                             aop_melhor_logs.append((formato, kpi))
-                    # Também espelhar no coeficiente anual exibido
+
+                    # Exibição do valor anual (colunas = KPIs; uma linha)
                     coef_anual_display = coef_anual_fmt.copy()
                     for kpi in substituir_por_aop:
                         coef_anual_display.loc[kpi] = fy_series.loc[kpi]
 
-                    # Formatadores
-                    def _fmt_coef(val, kpi_name):
-                        return f"{float(val):.3f}%" if is_spoilage(kpi_name) else f"{float(val):.3f}"
+                    # Formata uma única linha com KPIs como colunas
+                    def _fmt_val(kpi, v):
+                        return f"{float(v):.3f}%" if is_spoilage(kpi) else f"{float(v):.3f}"
+                    linha = {k: _fmt_val(k, coef_anual_display.get(k, 0.0)) for k in kpis_da_planta}
+                    df_anual_row = pd.DataFrame([linha], index=["Necessário (FY)"])
 
-                    df_coef_fmt = pd.DataFrame(coef_anual_display, columns=['Necessário (FY)'])
-                    df_coef_fmt['KPI'] = df_coef_fmt.index
-                    df_coef_fmt['Necessário (FY)'] = [
-                        _fmt_coef(v, k) for k, v in zip(df_coef_fmt['KPI'], df_coef_fmt['Necessário (FY)'])
-                    ]
-                    df_coef_fmt = df_coef_fmt.drop(columns=['KPI'])
+                    st.markdown("**📊 Valor Anual**")
+                    st.dataframe(df_anual_row[kpis_da_planta], use_container_width=True, height=100)
 
-                    st.markdown("**📊 Coeficiente/Valor Anual Necessário (Geral)**")
-                    st.dataframe(df_coef_fmt, use_container_width=True, height=350)
-
+                    # Metas futuras (espelhadas do formato)
                     st.markdown("**📅 Metas Mensais Futuras (Geral)**")
                     metas_fmt_ord = metas_fmt.reindex(index=kpis_da_planta, columns=MESES)
+
                     def _format_table(x):
                         out = x.copy()
                         for kpi in out.index:
@@ -487,6 +502,7 @@ def main():
                             else:
                                 out.loc[kpi] = out.loc[kpi].map(lambda z: f"{float(z):.3f}")
                         return out
+
                     st.dataframe(_format_table(metas_fmt_ord), use_container_width=True, height=420)
 
                 else:
@@ -571,21 +587,16 @@ def main():
 
                         geral_metas.loc[kpi, colunas_futuro] = metas_coef.values
 
-                    # Exibição do Geral
-                    df_coef_geral = pd.DataFrame(pd.Series(geral_coef_anual, name='Necessário (FY)')).reindex(kpis_da_planta)
-                    def _fmt_coef(val, kpi_name):
-                        return f"{float(val):.3f}%" if is_spoilage(kpi_name) else f"{float(val):.3f}"
-                    df_coef_fmt = df_coef_geral.copy()
-                    df_coef_fmt['KPI'] = df_coef_fmt.index
-                    df_coef_fmt['Necessário (FY)'] = [
-                        _fmt_coef(v, k) for k, v in zip(df_coef_fmt['KPI'], df_coef_fmt['Necessário (FY)'])
-                    ]
-                    df_coef_fmt = df_coef_fmt.drop(columns=['KPI'])
+                    # Valor Anual (KPIs nas colunas; 1 linha)
+                    def _fmt_val(kpi, v):
+                        return f"{float(v):.3f}%" if is_spoilage(kpi) else f"{float(v):.3f}"
+                    linha_geral = {k: _fmt_val(k, geral_coef_anual.get(k, 0.0)) for k in kpis_da_planta}
+                    df_anual_row_geral = pd.DataFrame([linha_geral], index=["Necessário (FY)"])
 
-                    st.markdown("**📊 Coeficiente/Valor Anual Necessário (Geral)**")
-                    st.dataframe(df_coef_fmt, use_container_width=True, height=350)
+                    st.markdown("**📊 Valor Anual**")
+                    st.dataframe(df_anual_row_geral[kpis_da_planta], use_container_width=True, height=100)
 
-                    st.markdown("**📅 Metas Mensais Futuras (Geral)**")
+                    # Metas futuras (Geral)
                     def _format_table(x):
                         out = x.copy()
                         for kpi in out.index:
@@ -594,6 +605,7 @@ def main():
                             else:
                                 out.loc[kpi] = out.loc[kpi].map(lambda z: f"{float(z):.3f}")
                         return out
+                    st.markdown("**📅 Metas Mensais Futuras (Geral)**")
                     st.dataframe(_format_table(geral_metas.reindex(index=kpis_da_planta, columns=MESES)),
                                  use_container_width=True, height=420)
 
@@ -607,32 +619,33 @@ def main():
                     fy_series = aops[formato]['FY'].astype(float).reindex(kpis_da_planta).fillna(0.0)
                     metas_fmt = resultados_por_formato[formato]['metas_futuras'].copy()
 
-                    # KPIs em que necessário > FY → exibir AOP (Exibição) e logar aviso
+                    # (NOVO) manter AOP quando resultado calculado é melhor que AOP
+                    for kpi in kpis_da_planta:
+                        if _resultado_melhor_que_aop(metas_fmt.loc[kpi], aops_show[formato].loc[kpi], kpi):
+                            metas_fmt.loc[kpi, colunas_futuro] = aops_show[formato].loc[kpi, colunas_futuro].values
+                            aop_mantido_melhor_logs.append((formato, kpi))
+
+                    # KPIs em que necessário > FY → aplicar AOP (Exibição) e logar aviso
                     substituir_por_aop = fy_series.index[(coef_anual_fmt.fillna(0.0) > fy_series.fillna(0.0))].tolist()
                     if len(colunas_futuro) > 0 and substituir_por_aop:
                         for kpi in substituir_por_aop:
                             metas_fmt.loc[kpi, colunas_futuro] = aops_show[formato].loc[kpi, colunas_futuro].values
                             aop_melhor_logs.append((formato, kpi))
 
-                    # Também substituir a EXIBIÇÃO do coeficiente anual quando necessário > FY
+                    # Valor Anual (colunas = KPIs; 1 linha) — substitui exibição por FY quando necessário > FY
                     coef_anual_display = coef_anual_fmt.copy()
                     for kpi in substituir_por_aop:
                         coef_anual_display.loc[kpi] = fy_series.loc[kpi]
 
-                    # Formatação
-                    def _fmt_coef(val, kpi_name):
-                        return f"{float(val):.3f}%" if is_spoilage(kpi_name) else f"{float(val):.3f}"
+                    def _fmt_val(kpi, v):
+                        return f"{float(v):.3f}%" if is_spoilage(kpi) else f"{float(v):.3f}"
+                    linha_fmt = {k: _fmt_val(k, coef_anual_display.get(k, 0.0)) for k in kpis_da_planta}
+                    df_anual_row_fmt = pd.DataFrame([linha_fmt], index=["Necessário (FY)"])
 
-                    df_coef_display = pd.DataFrame(coef_anual_display, columns=['Necessário (FY)'])
-                    df_coef_display['KPI'] = df_coef_display.index
-                    df_coef_display['Necessário (FY)'] = [
-                        _fmt_coef(v, k) for k, v in zip(df_coef_display['KPI'], df_coef_display['Necessário (FY)'])
-                    ]
-                    df_coef_display = df_coef_display.drop(columns=['KPI'])
+                    st.markdown("**📊 Valor Anual — KPIs como colunas (Formato)**")
+                    st.dataframe(df_anual_row_fmt[kpis_da_planta], use_container_width=True, height=100)
 
-                    st.markdown("**📊 Coeficiente/Valor Anual Necessário (por KPI)**")
-                    st.dataframe(df_coef_display, use_container_width=True, height=350)
-
+                    # Metas Mensais Futuras (por KPI)
                     st.markdown("**📅 Metas Mensais Futuras (por KPI)**")
                     metas_fmt_ord = metas_fmt.reindex(index=kpis_da_planta, columns=MESES)
                     def _format_table(x):
@@ -647,12 +660,18 @@ def main():
 
             # --- AVISOS GERAIS ---
             if aop_melhor_logs:
-                # agrupar por formato para mensagem mais clara
                 msg_por_formato = {}
                 for formato, kpi in aop_melhor_logs:
                     msg_por_formato.setdefault(formato, []).append(kpi)
                 linhas = [f"• {fmt}: " + ", ".join(kpis) for fmt, kpis in msg_por_formato.items()]
                 st.info("🔒 **AOP (Exibição) aplicado porque o 'necessário' superou o FY**:\n" + "\n".join(linhas))
+
+            if aop_mantido_melhor_logs:
+                msg_por_formato2 = {}
+                for formato, kpi in aop_mantido_melhor_logs:
+                    msg_por_formato2.setdefault(formato, []).append(kpi)
+                linhas2 = [f"• {fmt}: " + ", ".join(kpis) for fmt, kpis in msg_por_formato2.items()]
+                st.info("🟦 **AOP (Exibição) mantido no futuro porque o resultado calculado ficou melhor que o AOP**:\n" + "\n".join(linhas2))
 
         st.success("✅ Cálculos concluídos com sucesso!")
 
