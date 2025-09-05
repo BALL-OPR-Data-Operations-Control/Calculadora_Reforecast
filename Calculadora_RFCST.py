@@ -555,7 +555,7 @@ def main():
                         if len(bloqueios_por_kpi[kpi]) > 0:
                             info_msgs.append(f"• {kpi}: não consolidado (formatos bloqueados: {', '.join(sorted(bloqueios_por_kpi[kpi]))})")
                     if info_msgs:
-                        st.warning("Regras de consolidação aplicadas:\n" + "\n".join(info_msgs))
+                        st.warning("Regras verificação (YTD > FY):\n" + "\n".join(info_msgs))
 
                     geral_coef_anual = {}
                     geral_metas = pd.DataFrame(0.0, index=kpis_da_planta, columns=MESES)
