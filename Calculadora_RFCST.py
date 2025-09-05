@@ -5,11 +5,16 @@ import numpy as np
 from pathlib import Path
 
 
-KPIS_CANS = ['Metal Can (kg/000)', 'Spoilage(%)', 'Scrap (kg/000)','Varnish Usage (kg/000)','Ink Usage (kg/000)','Inside Spray Usage(kg/000)',
-            'Gas (m³/000) / (kg/000)', 'Thermal (kwh/000)','Consumo de Energia (kwh/000)', 'Variable Light (kwh/000) - Fora Ponta', 'Variable Light (kwh/000) - Ponta','Water & Sewer (m³/000)']
-KPIS_ENDS = ['Metal End (kg/000)','Spoilage (%)','Tab Scrap  (kg/000)','Compound Usage (kg/000)','Consumo de Energia (kwh/000)',
-             'Variable Light (KwH) - Fora Ponta','Variable Light (KwH) - Ponta',
-            'Water & Sewer (m³/000)','Metal Tab (kg/000)','End Scrap (kg/000)']
+KPIS_CANS = [
+    'Metal Can (kg/000)', 'Spoilage(%)', 'Scrap (kg/000)','Varnish Usage (kg/000)','Ink Usage (kg/000)',
+    'Inside Spray Usage(kg/000)','Gas (m³/000) / (kg/000)', 'Thermal (kwh/000)','Consumo de Energia (kwh/000)',
+    'Variable Light (kwh/000) - Fora Ponta', 'Variable Light (kwh/000) - Ponta','Water & Sewer (m³/000)'
+]
+KPIS_ENDS = [
+    'Metal End (kg/000)','Spoilage (%)','Tab Scrap  (kg/000)','Compound Usage (kg/000)','Consumo de Energia (kwh/000)',
+    'Variable Light (KwH) - Fora Ponta','Variable Light (KwH) - Ponta','Water & Sewer (m³/000)',
+    'Metal Tab (kg/000)','End Scrap (kg/000)'
+]
 
 PLANTAS_CONFIG = {}
 # Plantas de latas
@@ -28,8 +33,10 @@ def validar_dados(vol_df, aop_df):
     erros = []
     if (vol_df < 0).any().any():
         erros.append("Volume de produção não pode ser negativo")
-    if pd.isna(aop_df['FY']).any() or (aop_df['FY'] <= 0).any():
-        erros.append("Target anual (FY) deve ser preenchido e maior que zero")
+    # FY pode ser zero (pedido seu: coeficiente não informado = 0)
+    # então não vamos exigir FY > 0 aqui. Mantemos somente NaN como erro.
+    if pd.isna(aop_df['FY']).any():
+        erros.append("Há FY não informado (NaN). Preencha com 0 quando não houver meta.")
     return erros
 
 
@@ -178,14 +185,12 @@ def main():
     with st.container(border=True):
         col1, col2, col3 = st.columns(3)
         with col1:
-            # valor default do slicer pode ser guardado no estado da planta se quiser persistir também
             mes_default = plant_state.get('mes_reforecast', 'Jun')
             mes_reforecast = st.select_slider(
                 "Mês do Reforecast", options=MESES, value=mes_default,
                 help="Mês final do período YTD",
                 key=f"{planta_selecionada}_mes_reforecast"
             )
-            # salva mês no estado da planta
             plant_state['mes_reforecast'] = mes_reforecast
             set_plant_store(planta_selecionada, plant_state)
 
@@ -203,9 +208,8 @@ def main():
                         [f"<span class='chip chip-fut'>{m}</span>" for m in fut_cols])
         st.markdown(f"**{titulo}**  \n<div class='chips'>{chips}</div>", unsafe_allow_html=True)
 
-    # --- Títulos de coluna (sem emojis, conforme pedido) ---
     def titulo_coluna_mes(mes: str, ytd_cols):
-        return f"{mes} (%)"
+        return f"{mes}"
 
     # --- Passo 3: Configuração de Formatos ---
     st.header("3️⃣ Configuração de Formatos")
@@ -217,7 +221,6 @@ def main():
         )
         plant_state['num_formatos'] = int(num_formatos)
 
-        # nomes por planta
         cols_nomes = st.columns(min(num_formatos, 4))
         nomes_guardados = plant_state.get('nomes_formatos', [])
         novos_nomes = []
@@ -245,11 +248,9 @@ def main():
             formato_atual = plant_state['nomes_formatos'][i]
             st.subheader(f"{formato_atual}")
 
-            # Barra de meses (visual)
             chips_meses(colunas_ytd, colunas_futuro)
             st.write("")
 
-            # Recupera dados salvos (se houver) para esta planta/índice de formato
             dados_salvos = plant_state['dados'].get(i, {})
 
             # Volume
@@ -273,13 +274,13 @@ def main():
                 df_aop_default['FY'] = 0.0
             cfg_aop = {m: st.column_config.NumberColumn(titulo_coluna_mes(m, colunas_ytd), format="%.3f")
                        for m in MESES}
-            cfg_aop['FY'] = st.column_config.NumberColumn("🎯 FY (%)", format="%.3f", required=True)
-           
+            cfg_aop['FY'] = st.column_config.NumberColumn("🎯 FY", format="%.3f", required=False)
             df_aop_editado = st.data_editor(
                 df_aop_default, column_config=cfg_aop, key=f"{planta_selecionada}_aop_{i}",
                 use_container_width=True, num_rows="fixed",
-                height=458 if tipo_planta == 'Cans' else 388)  
- 
+                height=458 if PLANTAS_CONFIG[planta_selecionada]['tipo'] == 'Cans' else 388
+            )
+
             # AOP (Exibição) — 12 meses (sem FY)
             st.markdown("##### 🧷 AOP (Opcional)")
             df_aop_show_default = dados_salvos.get('aop_show', pd.DataFrame(index=kpis_da_planta, columns=MESES).fillna(0.0))
@@ -288,31 +289,28 @@ def main():
                     df_aop_show_default[m] = 0.0
             cfg_show = {m: st.column_config.NumberColumn(titulo_coluna_mes(m, colunas_ytd), format="%.3f")
                         for m in MESES}
-            
             df_aop_show_editado = st.data_editor(
                 df_aop_show_default,
                 column_config=cfg_show,
                 key=f"{planta_selecionada}_aop_show_{i}",
                 use_container_width=True,
                 num_rows="fixed",
-                height=458 if tipo_planta == 'Cans' else 388
+                height=458 if PLANTAS_CONFIG[planta_selecionada]['tipo'] == 'Cans' else 388
             )
 
-
-            # Salva imediatamente no estado da planta
+            # Salva no estado
             plant_state['dados'][i] = {
-                'volume': df_volume_editado,
-                'aop': df_aop_editado,
-                'aop_show': df_aop_show_editado
+                'volume': df_volume_editado.fillna(0.0),
+                'aop': df_aop_editado.fillna(0.0),
+                'aop_show': df_aop_show_editado.fillna(0.0)
             }
             set_plant_store(planta_selecionada, plant_state)
 
-            # Também passamos ao dicionário local para os cálculos
             dados_formatos[formato_atual] = plant_state['dados'][i]
 
     st.markdown("---")
 
-    # --- Função de estilo: destaca colunas YTD nos resultados (st.dataframe) ---
+    # --- Função de estilo (destaque YTD) ---
     def style_highlight_ytd(df: pd.DataFrame, ytd_cols):
         def _col_style(col):
             if col.name in ytd_cols:
@@ -320,130 +318,322 @@ def main():
             return [''] * len(col)
         return df.style.apply(lambda c: _col_style(c), axis=0)
 
+    # --- Helpers de cálculo por KPI ---
+    def is_spoilage(kpi_name: str) -> bool:
+        return 'spoilage' in kpi_name.lower()
+
+    def calc_kpi_por_formato(formato: str, df_vol: pd.DataFrame, df_aop: pd.DataFrame):
+        """
+        Retorna dicionário com:
+        - 'bloqueado_por_kpi': set(KPIs)
+        - 'coef_anual_necessario': Series (index=KPI)
+        - 'metas_futuras': DataFrame (index=KPI, columns=MESES)
+        """
+        vol_mensal = df_vol['Volume Total'].astype(float).reindex(MESES).fillna(0.0)
+        resultados_coef_anual = {}
+        metas_futuras = pd.DataFrame(0.0, index=df_aop.index, columns=MESES)
+
+        bloqueados = set()
+
+        for kpi in df_aop.index:
+            serie = df_aop.loc[kpi].astype(float)
+            serie_mes = serie.reindex(MESES).fillna(0.0)
+            fy = float(serie.get('FY', 0.0))
+
+            # YTD x FY (verificação de bloqueio por KPI)
+            if is_spoilage(kpi):
+                realizado_ytd = ((serie_mes[colunas_ytd] / 100.0) * vol_mensal[colunas_ytd]).sum()
+                total_fy = (fy / 100.0) * vol_mensal.sum()
+            else:
+                # KPI de valor absoluto por milheiro (ou unidade declarada): multiplica direto pelo volume
+                realizado_ytd = (serie_mes[colunas_ytd] * vol_mensal[colunas_ytd]).sum()
+                total_fy = fy * vol_mensal.sum()
+
+            if realizado_ytd > total_fy:
+                # bloqueia este KPI para este formato
+                bloqueados.add(kpi)
+                resultados_coef_anual[kpi] = 0.0  # saída deve aparecer como zero
+                metas_futuras.loc[kpi, :] = 0.0
+                continue
+
+            # cálculo do saldo e distribuição futura
+            saldo_restante = max(total_fy - realizado_ytd, 0.0)
+            vol_fut = vol_mensal[colunas_futuro].sum()
+
+            if vol_fut <= 0.0 or saldo_restante == 0.0:
+                resultados_coef_anual[kpi] = 0.0
+                metas_futuras.loc[kpi, :] = 0.0
+                continue
+
+            # estimativa por mês para proporção
+            if is_spoilage(kpi):
+                estimado_mes = (serie_mes[colunas_futuro] / 100.0) * vol_mensal[colunas_futuro]
+            else:
+                estimado_mes = (serie_mes[colunas_futuro]) * vol_mensal[colunas_futuro]
+
+            total_estimado = float(estimado_mes.sum())
+            if total_estimado <= 0.0:
+                # se não há estimativa, distribui proporcional ao volume futuro
+                base_prop = vol_mensal[colunas_futuro].replace(0.0, 0.0)
+                total_base = base_prop.sum()
+                if total_base <= 0.0:
+                    metas_futuras.loc[kpi, colunas_futuro] = 0.0
+                else:
+                    proporcao = base_prop / total_base
+                    # metas mensais = proporção * saldo_restante, convertido para coeficiente mensal
+                    if is_spoilage(kpi):
+                        metas_valor = proporcao * saldo_restante  # unidade líquida
+                        metas_coef = (metas_valor / vol_mensal[colunas_futuro]).replace([np.inf, -np.inf], 0.0).fillna(0.0) * 100.0
+                    else:
+                        metas_valor = proporcao * saldo_restante
+                        metas_coef = (metas_valor / vol_mensal[colunas_futuro]).replace([np.inf, -np.inf], 0.0).fillna(0.0)
+                    metas_futuras.loc[kpi, colunas_futuro] = metas_coef.values
+            else:
+                proporcao = (estimado_mes / total_estimado).fillna(0.0)
+                if is_spoilage(kpi):
+                    metas_valor = proporcao * saldo_restante
+                    metas_coef = (metas_valor / vol_mensal[colunas_futuro]).replace([np.inf, -np.inf], 0.0).fillna(0.0) * 100.0
+                else:
+                    metas_valor = proporcao * saldo_restante
+                    metas_coef = (metas_valor / vol_mensal[colunas_futuro]).replace([np.inf, -np.inf], 0.0).fillna(0.0)
+                metas_futuras.loc[kpi, colunas_futuro] = metas_coef.values
+
+            # coeficiente/valor anual necessário (média equivalente no FY)
+            if is_spoilage(kpi):
+                # necessário (em %) para fechar FY: saldo_restante / volume_futuro * 100
+                resultados_coef_anual[kpi] = (saldo_restante / max(vol_fut, 1e-9)) * 100.0
+            else:
+                # necessário em valor absoluto por milheiro (ou unidade declarada)
+                resultados_coef_anual[kpi] = (saldo_restante / max(vol_fut, 1e-9))
+
+        return {
+            'bloqueado_por_kpi': bloqueados,
+            'coef_anual_necessario': pd.Series(resultados_coef_anual).reindex(df_aop.index).fillna(0.0),
+            'metas_futuras': metas_futuras.reindex(index=df_aop.index, columns=MESES).fillna(0.0)
+        }
+
     # --- Passo 5: Cálculo e Resultados ---
     st.header("5️⃣ Cálculo e Resultados")
     if st.button("🚀 Calcular Reforecast", type="primary", use_container_width=True, key=f"{planta_selecionada}_calc"):
 
         with st.spinner("Consolidando dados e executando cálculos... Por favor, aguarde."):
 
-            # ETAPA 1: Consolidar inputs dos formatos
-            lista_dfs_volume = []
-            lista_dfs_coef = []
-            lista_dfs_aop_show = []
-
             nomes_formatos = plant_state['nomes_formatos']
 
+            # Monta dicionários por formato
+            volumes = {}
+            aops = {}
+            aops_show = {}
             for i, formato in enumerate(nomes_formatos):
-                df_vol_formato = dados_formatos[formato]['volume'].T.rename(columns={"Volume Total": formato})
-                df_aop_formato = dados_formatos[formato]['aop'].T.rename(columns={"Spoilage": formato})
-                df_aop_show_formato = dados_formatos[formato]['aop_show'].T.rename(columns={"Spoilage": formato})
+                df_vol = dados_formatos[formato]['volume'].T  # linhas = meses
+                volumes[formato] = df_vol.reindex(index=MESES).fillna(0.0)
 
-                lista_dfs_volume.append(df_vol_formato)
-                lista_dfs_coef.append(df_aop_formato)
-                lista_dfs_aop_show.append(df_aop_show_formato)
+                df_aop = dados_formatos[formato]['aop'].copy()
+                df_aop.index = pd.Index(df_aop.index, name='KPI')
+                aops[formato] = df_aop.reindex(index=kpis_da_planta, columns=MESES + ['FY']).fillna(0.0)
 
-            df_volume_all = pd.concat(lista_dfs_volume, axis=1)
-            df_coef_all = pd.concat(lista_dfs_coef, axis=1)
-            df_aop_show_all = pd.concat(lista_dfs_aop_show, axis=1)
+                df_aop_show = dados_formatos[formato]['aop_show'].copy()
+                df_aop_show.index = pd.Index(df_aop_show.index, name='KPI')
+                aops_show[formato] = df_aop_show.reindex(index=kpis_da_planta, columns=MESES).fillna(0.0)
 
-            # ---------- VERIFICAÇÃO POR FORMATO ----------
-            formatos_ultrapassados = []
-            for fmt in nomes_formatos:
-                vol_liq_ytd_fmt = ((df_coef_all.loc[colunas_ytd, fmt] / 100.0) * df_volume_all.loc[colunas_ytd, fmt]).sum()
-                vol_liq_total_fy_fmt = (df_coef_all.loc['FY', fmt] / 100.0) * df_volume_all[fmt].sum()
-                if vol_liq_ytd_fmt > vol_liq_total_fy_fmt:
-                    formatos_ultrapassados.append(fmt)
+            # Cálculo por formato e por KPI
+            resultados_por_formato = {}
+            bloqueios_por_kpi = {}  # {kpi: set(formatos bloqueados)}
+            for k in kpis_da_planta:
+                bloqueios_por_kpi[k] = set()
 
-            formatos_validos = [f for f in nomes_formatos if f not in formatos_ultrapassados]
+            for formato in nomes_formatos:
+                res = calc_kpi_por_formato(formato, volumes[formato], aops[formato])
+                resultados_por_formato[formato] = res
+                # agrega bloqueios
+                for k in res['bloqueado_por_kpi']:
+                    bloqueios_por_kpi[k].add(formato)
 
-            if len(formatos_validos) == 0:
-                st.error("❌ FY de todos os formatos já foi ultrapassado pelo YTD. Cálculo não realizado.")
-                st.stop()
+            # Construção das tabelas de saída por formato (coef anual + metas futuras)
+            abas = st.tabs(nomes_formatos + ['Geral'])
+            for idx, formato in enumerate(nomes_formatos):
+                with abas[idx]:
+                    st.subheader(f"Formato: {formato}")
+                    chips_meses(colunas_ytd, colunas_futuro)
 
-            # Trabalhar a partir daqui apenas com os formatos válidos
-            df_volume = df_volume_all[formatos_validos].copy()
-            df_coef = df_coef_all[formatos_validos].copy()
-            df_aop_show = df_aop_show_all[formatos_validos].copy()
+                    coef_anual_fmt = resultados_por_formato[formato]['coef_anual_necessario'].copy()
 
-            # Só calcula o 'Geral' se NENHUM formato estiver ultrapassado
-            calcular_geral = (len(formatos_ultrapassados) == 0)
-            if calcular_geral:
-                df_volume['Geral'] = df_volume.sum(axis=1)
+                    # Onde o formato/KPI foi bloqueado, manter 0 (já está 0 no cálculo)
+                    # Exibição AOP (Exibição) quando necessário? Regra original: quando necessário ultrapassar FY.
+                    # Aqui mantemos a mesma ideia visual apenas para metas futuras:
+                    metas_fmt = resultados_por_formato[formato]['metas_futuras'].copy()
 
-            # ---------- CÁLCULO NORMAL (inalterado) ----------
-            df_vol_liq = (df_coef.loc[MESES] / 100.0) * df_volume
-            if calcular_geral:
-                df_vol_liq['Geral'] = df_vol_liq.sum(axis=1)
-                coef_geral_mensal = (df_vol_liq['Geral'] / df_volume['Geral']) * 100.0
-                df_coef['Geral'] = coef_geral_mensal
+                    # Substitui exibição futura por AOP (Exibição) quando "necessário > FY"
+                    # Para avaliar "necessário > FY", comparamos o coef anual necessário vs FY do KPI.
+                    # No caso de valor absoluto, a comparação é direta; em % também.
+                    fy_series = aops[formato]['FY'].astype(float).reindex(kpis_da_planta).fillna(0.0)
 
-            valor_liq_ytd = df_vol_liq.loc[colunas_ytd].sum()
-            volume_total_fy = df_volume.sum()
-            valor_liq_total_fy = (df_coef.loc['FY'] / 100.0) * volume_total_fy
+                    substituir_por_aop = fy_series.index[
+                        (coef_anual_fmt.fillna(0.0) > fy_series.fillna(0.0))
+                    ].tolist()
 
-            if calcular_geral:
-                valor_liq_total_fy['Geral'] = valor_liq_total_fy.drop('Geral').sum()
-                df_coef.loc['FY', 'Geral'] = (valor_liq_total_fy['Geral'] / volume_total_fy['Geral']) * 100.0
+                    if len(colunas_futuro) > 0 and substituir_por_aop:
+                        for kpi in substituir_por_aop:
+                            metas_fmt.loc[kpi, colunas_futuro] = aops_show[formato].loc[kpi, colunas_futuro].values
 
-            saldo_restante = valor_liq_total_fy - valor_liq_ytd
-            valor_total_futuro = df_volume.loc[colunas_futuro].sum()
-            coeficientes_necessarios = (saldo_restante / valor_total_futuro) * 100.0
+                    # Formatação: % para spoilage; valor para demais KPIs
+                    df_coef_display = pd.DataFrame(coef_anual_fmt, columns=['Necessário (FY)'])
+                    # cria formato condicional por linha
+                    def _fmt_coef(val, kpi_name):
+                        if is_spoilage(kpi_name):
+                            return f"{val:.3f}%"
+                        return f"{val:.3f}"
 
-            df_coef_futuro = df_coef.loc[colunas_futuro]
-            df_volume_futuro = df_volume.loc[colunas_futuro]
-            df_spoilage_estimado = (df_coef_futuro / 100.0) * df_volume_futuro
-            total_spoilage_estimado = df_spoilage_estimado.sum()
-            df_proporcao_spoilage = df_spoilage_estimado.div(total_spoilage_estimado, axis='columns').fillna(0.0)
-            df_orcamento_real_futuro = df_proporcao_spoilage.mul(saldo_restante, axis='columns')
-            df_coef_final_mensal = (df_orcamento_real_futuro / df_volume_futuro) * 100.0
+                    df_coef_fmt = df_coef_display.copy()
+                    df_coef_fmt['KPI'] = df_coef_fmt.index
+                    df_coef_fmt['Necessário (FY)'] = [
+                        _fmt_coef(v, k) for k, v in zip(df_coef_fmt['KPI'], df_coef_fmt['Necessário (FY)'])
+                    ]
+                    df_coef_fmt = df_coef_fmt.drop(columns=['KPI'])
 
-        # --- AVISOS ---
-        formatos_para_exibir_aop = []
-        for fmt in df_coef.columns:
-            if fmt == 'Geral':
-                continue
-            nec = float(coeficientes_necessarios.get(fmt, np.nan))
-            fy = float(df_coef.loc['FY', fmt])
-            if pd.notna(nec) and nec > fy:
-                formatos_para_exibir_aop.append(fmt)
+                    st.markdown("**📊 Coeficiente/Valor Anual Necessário (por KPI)**")
+                    st.dataframe(df_coef_fmt, use_container_width=True, height=350)
 
-        if formatos_ultrapassados:
-            msg = "FY ultrapassado no(s) formato(s): " + ", ".join(formatos_ultrapassados)
-            if len(formatos_validos) > 0:
-                msg += f". Cálculo realizado apenas para: {', '.join(formatos_validos)}. Consolidado 'Geral' não foi calculado."
-            st.warning(msg)
+                    st.markdown("**📅 Metas Mensais Futuras (por KPI)**")
+                    metas_fmt_ord = metas_fmt.reindex(index=kpis_da_planta, columns=MESES)
+                    # aplica destaque YTD (mas a tabela é completa; YTD ficará em branco/zero)
+                    styled = style_highlight_ytd(metas_fmt_ord, colunas_ytd)
 
-        if formatos_para_exibir_aop:
-            st.warning("🔒 Estes formatos superaram o FY; exibiremos os valores do AOP (Exibição) sem alterar o cálculo: "
-                       + ", ".join(formatos_para_exibir_aop))
-        else:
-            if not formatos_ultrapassados:
-                st.success("✅ Cálculos concluídos com sucesso!")
+                    # aplicar formatação por célula (linhas % vs valor)
+                    def _format_func(x):
+                        # x é DataFrame; aplicamos linha a linha
+                        out = x.copy()
+                        for kpi in out.index:
+                            if is_spoilage(kpi):
+                                out.loc[kpi] = out.loc[kpi].map(lambda z: f"{float(z):.3f}%")
+                            else:
+                                out.loc[kpi] = out.loc[kpi].map(lambda z: f"{float(z):.3f}")
+                        return out
 
-        # --- RESULTADOS (com camada de EXIBIÇÃO quando necessário) ---
-        coef_anuais_display = coeficientes_necessarios.copy()
-        for fmt in formatos_para_exibir_aop:
-            coef_anuais_display[fmt] = df_coef.loc['FY', fmt]  # mostra FY (AOP) no lugar do Necessário
+                    st.dataframe(_format_func(metas_fmt_ord), use_container_width=True, height=420)
 
-        st.subheader("📊 Resultado 1: Coeficiente Anual (exibindo AOP quando cálculo > FY)")
-        st.dataframe(pd.DataFrame(coef_anuais_display, columns=['Coeficiente Anual (%)']).T.style.format("{:.3f}%"),
-                     use_container_width=True)
+            # --- GERAL (apenas quando nenhum formato do KPI estiver bloqueado) ---
+            with abas[-1]:
+                st.subheader("Consolidado Geral")
+                chips_meses(colunas_ytd, colunas_futuro)
 
-        # Metas mensais futuras — para os “travados visualmente”, mostrar AOP (Exibição)
-        df_coef_final_mensal_display = df_coef_final_mensal.copy()
-        if len(colunas_futuro) > 0:
-            for fmt in formatos_para_exibir_aop:
-                if (fmt in df_coef_final_mensal_display.columns) and (fmt in df_aop_show.columns):
-                    aop_show_future = df_aop_show.reindex(index=MESES).loc[colunas_futuro, fmt].astype(float).fillna(0.0)
-                    df_coef_final_mensal_display.loc[colunas_futuro, fmt] = aop_show_future.values
+                info_msgs = []
+                for kpi in kpis_da_planta:
+                    if len(bloqueios_por_kpi[kpi]) > 0:
+                        info_msgs.append(f"• {kpi}: Valor YTD > Valor FY (formatos bloqueados: {', '.join(sorted(bloqueios_por_kpi[kpi]))})")
+                if info_msgs:
+                    st.warning("Verificação:\n" + "\n".join(info_msgs))
 
-        st.subheader("📅 Resultado 2: Metas Mensais Futuras (%)")
-        #st.caption("🟦 = YTD | ⬜ = Futuro. Quando cálculo > FY, exibimos os valores da tabela 'AOP (Exibição)' apenas para aquele formato. O 'Geral' permanece calculado normalmente.")
-        if not df_coef_final_mensal_display.empty:
-            styled = style_highlight_ytd(df_coef_final_mensal_display, colunas_ytd).format("{:.3f}%")
-            st.dataframe(styled, use_container_width=True)
-        else:
-            st.info("Não há meses futuros no recorte selecionado.")
+                # Para cada KPI, se nenhum formato bloqueado → consolida; senão → zeros
+                geral_coef_anual = {}
+                geral_metas = pd.DataFrame(0.0, index=kpis_da_planta, columns=MESES)
+
+                # Soma volumes de todos os formatos válidos por KPI (válidos = não bloqueados para aquele KPI)
+                for kpi in kpis_da_planta:
+                    formatos_validos_kpi = [f for f in nomes_formatos if f not in bloqueios_por_kpi[kpi]]
+
+                    if len(formatos_validos_kpi) == 0:
+                        geral_coef_anual[kpi] = 0.0
+                        geral_metas.loc[kpi, :] = 0.0
+                        continue
+
+                    # Reconstroi base de cálculo para o KPI (somando realizado YTD e FY por formato)
+                    vol_total = pd.Series(0.0, index=MESES)
+                    realizado_ytd_total = 0.0
+                    total_fy_total = 0.0
+
+                    for f in formatos_validos_kpi:
+                        vol_mensal = volumes[f]['Volume Total'].astype(float).reindex(MESES).fillna(0.0)
+                        vol_total += vol_mensal
+
+                        serie = aops[f].loc[kpi].astype(float).reindex(MESES + ['FY']).fillna(0.0)
+                        fy = float(serie.get('FY', 0.0))
+                        serie_mes = serie.reindex(MESES).fillna(0.0)
+
+                        if is_spoilage(kpi):
+                            realizado_ytd_total += ((serie_mes[colunas_ytd] / 100.0) * vol_mensal[colunas_ytd]).sum()
+                            total_fy_total += (fy / 100.0) * vol_mensal.sum()
+                        else:
+                            realizado_ytd_total += (serie_mes[colunas_ytd] * vol_mensal[colunas_ytd]).sum()
+                            total_fy_total += fy * vol_mensal.sum()
+
+                    if total_fy_total <= realizado_ytd_total:
+                        geral_coef_anual[kpi] = 0.0
+                        geral_metas.loc[kpi, :] = 0.0
+                        continue
+
+                    saldo_restante = total_fy_total - realizado_ytd_total
+                    vol_fut = vol_total[colunas_futuro].sum()
+
+                    if vol_fut <= 0.0:
+                        geral_coef_anual[kpi] = 0.0
+                        geral_metas.loc[kpi, :] = 0.0
+                        continue
+
+                    # Proporção para distribuir metas futuras no Geral:
+                    # soma das estimativas dos formatos válidos
+                    estimado_geral = pd.Series(0.0, index=colunas_futuro)
+                    for f in formatos_validos_kpi:
+                        vol_mensal = volumes[f]['Volume Total'].astype(float).reindex(MESES).fillna(0.0)
+                        serie_mes = aops[f].loc[kpi].astype(float).reindex(MESES).fillna(0.0)
+                        if is_spoilage(kpi):
+                            estimado_geral += (serie_mes[colunas_futuro] / 100.0) * vol_mensal[colunas_futuro]
+                        else:
+                            estimado_geral += (serie_mes[colunas_futuro]) * vol_mensal[colunas_futuro]
+
+                    total_estimado = float(estimado_geral.sum())
+                    if total_estimado <= 0.0:
+                        base_prop = vol_total[colunas_futuro]
+                        total_base = base_prop.sum()
+                        if total_base <= 0.0:
+                            metas_valor = pd.Series(0.0, index=colunas_futuro)
+                        else:
+                            proporcao = base_prop / total_base
+                            metas_valor = proporcao * saldo_restante
+                    else:
+                        proporcao = (estimado_geral / total_estimado).fillna(0.0)
+                        metas_valor = proporcao * saldo_restante
+
+                    # Converter metas_valor para coeficiente/valor por mês conforme KPI
+                    if is_spoilage(kpi):
+                        metas_coef = (metas_valor / vol_total[colunas_futuro]).replace([np.inf, -np.inf], 0.0).fillna(0.0) * 100.0
+                        geral_coef_anual[kpi] = (saldo_restante / max(vol_fut, 1e-9)) * 100.0
+                    else:
+                        metas_coef = (metas_valor / vol_total[colunas_futuro]).replace([np.inf, -np.inf], 0.0).fillna(0.0)
+                        geral_coef_anual[kpi] = (saldo_restante / max(vol_fut, 1e-9))
+
+                    geral_metas.loc[kpi, colunas_futuro] = metas_coef.values
+
+                # Exibição final do Geral
+                df_coef_geral = pd.DataFrame(pd.Series(geral_coef_anual, name='Necessário (FY)')).reindex(kpis_da_planta)
+                def _fmt_coef(val, kpi_name):
+                    if is_spoilage(kpi_name):
+                        return f"{float(val):.3f}%"
+                    return f"{float(val):.3f}"
+
+                df_coef_fmt = df_coef_geral.copy()
+                df_coef_fmt['KPI'] = df_coef_fmt.index
+                df_coef_fmt['Necessário (FY)'] = [
+                    _fmt_coef(v, k) for k, v in zip(df_coef_fmt['KPI'], df_coef_fmt['Necessário (FY)'])
+                ]
+                df_coef_fmt = df_coef_fmt.drop(columns=['KPI'])
+
+                st.markdown("**📊 Coeficiente/Valor Anual Necessário (Geral)**")
+                st.dataframe(df_coef_fmt, use_container_width=True, height=350)
+
+                st.markdown("**📅 Metas Mensais Futuras (Geral)**")
+                geral_metas_ord = geral_metas.reindex(index=kpis_da_planta, columns=MESES)
+                def _format_table(x):
+                    out = x.copy()
+                    for kpi in out.index:
+                        if is_spoilage(kpi):
+                            out.loc[kpi] = out.loc[kpi].map(lambda z: f"{float(z):.3f}%")
+                        else:
+                            out.loc[kpi] = out.loc[kpi].map(lambda z: f"{float(z):.3f}")
+                    return out
+                st.dataframe(_format_table(geral_metas_ord), use_container_width=True, height=420)
+
+        st.success("✅ Cálculos concluídos com sucesso!")
 
     st.markdown("---")
     st.markdown(
