@@ -290,8 +290,7 @@ def main():
             df_aop_show_editado = st.data_editor(
                 df_aop_show_default, column_config=cfg_show, key=f"{planta_selecionada}_aop_show_{i}",
                 use_container_width=True, num_rows="fixed",
-                 height=468  
-
+                 height=458  
             )
 
             # Salva imediatamente no estado da planta
