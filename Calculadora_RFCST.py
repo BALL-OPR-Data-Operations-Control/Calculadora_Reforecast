@@ -278,7 +278,7 @@ def main():
             df_aop_editado = st.data_editor(
                 df_aop_default, column_config=cfg_aop, key=f"{planta_selecionada}_aop_{i}",
                 use_container_width=True, num_rows="fixed",
-                height=458)  
+                height=458 if tipo_planta == 'Cans' else 389)  
  
             # AOP (Exibição) — 12 meses (sem FY)
             st.markdown("##### 🧷 AOP (Opcional)")
@@ -295,8 +295,9 @@ def main():
                 key=f"{planta_selecionada}_aop_show_{i}",
                 use_container_width=True,
                 num_rows="fixed",
-                height=458 if tipo_planta == 'Cans' else 390
+                height=458 if tipo_planta == 'Cans' else 389
             )
+
 
             # Salva imediatamente no estado da planta
             plant_state['dados'][i] = {
