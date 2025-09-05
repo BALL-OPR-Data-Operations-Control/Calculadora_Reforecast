@@ -243,7 +243,7 @@ def main():
     for i, tab in enumerate(tabs_formatos):
         with tab:
             formato_atual = plant_state['nomes_formatos'][i]
-            st.subheader(f"📊 {formato_atual}")
+            st.subheader(f"{formato_atual}")
 
             # Barra de meses (visual)
             chips_meses(colunas_ytd, colunas_futuro)
@@ -264,7 +264,7 @@ def main():
             )
 
             # AOP principal (contém FY)
-            st.markdown("##### 🎯 Metas AOP - Spoilage (%)")
+            st.markdown("##### 🎯 Coeficientes YTD + Ciclo Anterior")
             df_aop_default = dados_salvos.get('aop', pd.DataFrame(index=kpis_da_planta, columns=MESES + ['FY']).fillna(0.0))
             for m in MESES:
                 if m not in df_aop_default.columns:
@@ -280,7 +280,7 @@ def main():
             )
 
             # AOP (Exibição) — 12 meses (sem FY)
-            st.markdown("##### 🧷 AOP (Exibição) – valores a mostrar quando cálculo > FY")
+            st.markdown("##### 🧷 AOP")
             df_aop_show_default = dados_salvos.get('aop_show', pd.DataFrame(index=kpis_da_planta, columns=MESES).fillna(0.0))
             for m in MESES:
                 if m not in df_aop_show_default.columns:
