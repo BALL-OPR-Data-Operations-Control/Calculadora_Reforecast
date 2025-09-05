@@ -274,11 +274,12 @@ def main():
             cfg_aop = {m: st.column_config.NumberColumn(titulo_coluna_mes(m, colunas_ytd), format="%.3f")
                        for m in MESES}
             cfg_aop['FY'] = st.column_config.NumberColumn("🎯 FY (%)", format="%.3f", required=True)
+           
             df_aop_editado = st.data_editor(
                 df_aop_default, column_config=cfg_aop, key=f"{planta_selecionada}_aop_{i}",
                 use_container_width=True, num_rows="fixed",
-                height=458        )
-
+                height=458)  
+ 
             # AOP (Exibição) — 12 meses (sem FY)
             st.markdown("##### 🧷 AOP (Opcional)")
             df_aop_show_default = dados_salvos.get('aop_show', pd.DataFrame(index=kpis_da_planta, columns=MESES).fillna(0.0))
@@ -287,10 +288,14 @@ def main():
                     df_aop_show_default[m] = 0.0
             cfg_show = {m: st.column_config.NumberColumn(titulo_coluna_mes(m, colunas_ytd), format="%.3f")
                         for m in MESES}
+            
             df_aop_show_editado = st.data_editor(
-                df_aop_show_default, column_config=cfg_show, key=f"{planta_selecionada}_aop_show_{i}",
-                use_container_width=True, num_rows="fixed",
-                 height=458  
+                df_aop_show_default,
+                column_config=cfg_show,
+                key=f"{planta_selecionada}_aop_show_{i}",
+                use_container_width=True,
+                num_rows="fixed",
+                height=458 if tipo_planta == 'Cans' else 390
             )
 
             # Salva imediatamente no estado da planta
