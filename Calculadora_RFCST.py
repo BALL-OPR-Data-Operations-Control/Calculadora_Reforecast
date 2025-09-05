@@ -261,7 +261,6 @@ def main():
                 df_volume_default, key=f"{planta_selecionada}_volume_{i}",
                 use_container_width=True, num_rows="fixed",
                 column_config=cfg_vol,
-                height=500
             )
 
             # AOP principal (contém FY)
@@ -277,8 +276,8 @@ def main():
             cfg_aop['FY'] = st.column_config.NumberColumn("🎯 FY (%)", format="%.3f", required=True)
             df_aop_editado = st.data_editor(
                 df_aop_default, column_config=cfg_aop, key=f"{planta_selecionada}_aop_{i}",
-                use_container_width=True, num_rows="fixed"
-            )
+                use_container_width=True, num_rows="fixed",
+                height=460          )
 
             # AOP (Exibição) — 12 meses (sem FY)
             st.markdown("##### 🧷 AOP (Opcional)")
@@ -290,7 +289,8 @@ def main():
                         for m in MESES}
             df_aop_show_editado = st.data_editor(
                 df_aop_show_default, column_config=cfg_show, key=f"{planta_selecionada}_aop_show_{i}",
-                use_container_width=True, num_rows="fixed"
+                use_container_width=True, num_rows="fixed",
+                 height=460    
             )
 
             # Salva imediatamente no estado da planta
