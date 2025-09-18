@@ -92,14 +92,13 @@ def main():
         initial_sidebar_state="expanded"
     )
 
-    ''' with st.sidebar:
+    with st.sidebar:
         st.markdown("## ⚠️ Avisos Importantes")
         st.markdown(
             "- **Nova Regra**: AOP preservado quando o **anual calculado > FY**.\n"
             "- **Formatação**: KPIs com **3 casas decimais**; **Spoilage** com **2 casas**.\n"
             "- **Verificação YTD vs FY**: se o **Volume Líquido YTD** exceder o **Volume Líquido FY**, o cálculo do item é **bloqueado**.\n"
-            "- Cole valores no formato brasileiro (ex.: `1.234,56`). O app converte automaticamente."
-        )'''
+        )
 
     COR_PRIMARIA = "#1140FE"
     COR_SECUNDARIA = "#0029B3"
