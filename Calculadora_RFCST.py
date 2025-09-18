@@ -4,20 +4,39 @@ from datetime import datetime
 import numpy as np
 from pathlib import Path
 
-# Ordem dos KPIs ajustada e energia unificada
+# --- ALTERAÇÃO 1: Listas de KPIs para a ENTRADA de dados ---
+# Estas listas agora contêm os KPIs de energia separados para o input do usuário.
+KPIS_CANS_INPUT = [
+    'Gas (m³/000) / (kg/000)', 'Ink Usage (kg/000)', 'Inside Spray Usage(kg/000)', 'Metal Can (kg/000)','Scrap (kg/000)', 'Spoilage(%)',
+    'Variable Light (kwh/000)- Fora Ponta', # <-- Energia separada
+    'Variable Light (kwh/000)- Ponta',      # <-- Energia separada
+    'Varnish Usage (kg/000)',
+    'Water & Sewer (m³/000)'
+]
+
+KPIS_ENDS_INPUT = [
+    'Metal End (kg/000)','Spoilage (%)','Tab Scrap (kg/000)','Compound Usage (kg/000)',
+    'Variable Light (kwh/000)- Fora Ponta', # <-- Energia separada
+    'Variable Light (kwh/000)- Ponta',      # <-- Energia separada
+    'Water & Sewer (m³/000)',
+    'Metal Tab (kg/000)','End Scrap (kg/000)'
+]
+
+# --- ALTERAÇÃO 2: Listas de KPIs para a ORDEM da exibição final ---
+# Estas listas mantêm o KPI de energia unificado e definem a ordem final nas tabelas de resultado.
 KPIS_CANS = [
     'Gas (m³/000) / (kg/000)', 'Ink Usage (kg/000)', 'Inside Spray Usage(kg/000)', 'Metal Can (kg/000)','Scrap (kg/000)', 'Spoilage(%)',
     'Variable Light (kwh/000)', 'Varnish Usage (kg/000)',
     'Water & Sewer (m³/000)'
 ]
 
-# Energia unificada para a lista de Ends
 KPIS_ENDS = [
     'Metal End (kg/000)','Spoilage (%)','Tab Scrap (kg/000)','Compound Usage (kg/000)',
-    'Variable Light (kwh/000)', # <-- KPI de Energia Unificado
+    'Variable Light (kwh/000)',
     'Water & Sewer (m³/000)',
     'Metal Tab (kg/000)','End Scrap (kg/000)'
 ]
+
 
 # -------------------------------
 # CONFIGURAÇÃO DE GÁS
@@ -38,14 +57,51 @@ GAS_KPI_NAME = 'Gas (m³/000) / (kg/000)' # Nome do KPI no input e em toda a ló
 PLANTAS_CONFIG = {}
 # Plantas de latas
 for planta in ['ARBA', 'BRBR', 'BR3R', 'BRJC', 'BRPA', 'BRET', 'BRPE', 'BRFR', 'BRAC', 'PYAS', 'CLSA']:
-    PLANTAS_CONFIG[planta] = {'tipo': 'Cans', 'kpis': KPIS_CANS}
+    PLANTAS_CONFIG[planta] = {'tipo': 'Cans', 'kpis': KPIS_CANS_INPUT} # <-- Usar KPIs de INPUT aqui
 # Plantas de tampas
 for planta in ['BRAM', 'PYAST', 'BRPET', 'BR3RT']:
-    PLANTAS_CONFIG[planta] = {'tipo': 'Ends', 'kpis': KPIS_ENDS}
+    PLANTAS_CONFIG[planta] = {'tipo': 'Ends', 'kpis': KPIS_ENDS_INPUT} # <-- Usar KPIs de INPUT aqui
 
 # MESES abreviados
 MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
          'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
+
+# --- ALTERAÇÃO 3: Nova função para agregar os resultados de energia ---
+def agregar_energia(df: pd.DataFrame, final_kpi_order: list) -> pd.DataFrame:
+    """
+    Soma os KPIs de energia 'Ponta' e 'Fora Ponta' em um único KPI
+    e reordena o DataFrame para a exibição final.
+    """
+    df = df.copy()
+    kpi_ponta = 'Variable Light (kwh/000)- Ponta'
+    kpi_fora_ponta = 'Variable Light (kwh/000)- Fora Ponta'
+    kpi_unificado = 'Variable Light (kwh/000)'
+
+    # Verifica se os dois KPIs de energia existem no dataframe (index ou colunas)
+    if kpi_ponta in df.index and kpi_fora_ponta in df.index:
+        # Soma as linhas
+        soma_energia = df.loc[kpi_ponta] + df.loc[kpi_fora_ponta]
+        # Adiciona a nova linha unificada
+        df.loc[kpi_unificado] = soma_energia
+        # Remove as linhas originais
+        df = df.drop(index=[kpi_ponta, kpi_fora_ponta])
+
+    elif kpi_ponta in df.columns and kpi_fora_ponta in df.columns:
+         # Soma as colunas (caso de dataframes transpostos como o de valor anual)
+        soma_energia = df[kpi_ponta] + df[kpi_fora_ponta]
+        # Adiciona a nova coluna unificada
+        df[kpi_unificado] = soma_energia
+        # Remove as colunas originais
+        df = df.drop(columns=[kpi_ponta, kpi_fora_ponta])
+
+    # Reordena o dataframe para a ordem de exibição final
+    # A reindexação funciona tanto para linhas quanto para colunas
+    if set(df.index).issuperset(set(final_kpi_order)):
+        return df.reindex(index=final_kpi_order).dropna(how='all')
+    elif set(df.columns).issuperset(set(final_kpi_order)):
+         return df.reindex(columns=final_kpi_order).dropna(how='all')
+
+    return df
 
 def validar_dados(vol_df, aop_df):
     erros = []
@@ -91,14 +147,6 @@ def main():
         layout="wide",
         initial_sidebar_state="expanded"
     )
-
-    with st.sidebar:
-        st.markdown("## ⚠️ Avisos Importantes")
-        st.markdown(
-            "- **Nova Regra**: AOP preservado quando o **anual calculado > FY**.\n"
-            "- **Formatação**: KPIs com **3 casas decimais**; **Spoilage** com **2 casas**.\n"
-            "- **Verificação YTD vs FY**: se o **Volume Líquido YTD** exceder o **Volume Líquido FY**, o cálculo do item é **bloqueado**.\n"
-        )
 
     COR_PRIMARIA = "#1140FE"
     COR_SECUNDARIA = "#0029B3"
@@ -374,6 +422,13 @@ def main():
     st.header("5️⃣ Cálculo e Resultados")
     if st.button("🚀 Calcular Reforecast", type="primary", use_container_width=True, key=f"{planta_selecionada}_calc"):
         with st.spinner("Consolidando dados e executando cálculos..."):
+            
+            # --- ALTERAÇÃO 4: Definir a lista de KPIs de ORDEM FINAL baseada no tipo da planta ---
+            if PLANTAS_CONFIG[planta_selecionada]['tipo'] == 'Cans':
+                final_kpi_order = KPIS_CANS
+            else:
+                final_kpi_order = KPIS_ENDS
+            
             nomes_formatos = plant_state['nomes_formatos']
             volumes = {f: dados_formatos[f]['volume'] for f in nomes_formatos}
             aops = {f: dados_formatos[f]['aop'] for f in nomes_formatos}
@@ -392,7 +447,6 @@ def main():
                 st.info("ℹ️ Para os KPIs com estouro em algum formato, o consolidado **Geral** foi suprimido para esses KPIs.")
 
             # --- PREPARAÇÃO DOS DADOS DE EXIBIÇÃO ---
-            # Este dicionário guardará os DataFrames de metas futuras finais para cada formato
             metas_finais_por_formato = {}
             avisos_por_formato = {}
 
@@ -408,7 +462,6 @@ def main():
                     coef_calculado = res['coef_anual_necessario'].get(kpi, 0.0)
                     coef_fy_meta = df_aop_formato.loc[kpi, 'FY']
 
-                    # CONDIÇÃO CORRIGIDA: Calculado > FY significa "melhor performance"
                     if coef_fy_meta > 0 and coef_calculado > coef_fy_meta:
                         override_values = df_aop_show_formato.loc[kpi, colunas_futuro]
                         if override_values.sum() > 0:
@@ -439,13 +492,19 @@ def main():
                     res_unico = resultados_por_formato[formato_unico]
                     df_anual_row_fmt = mult_gas_series_as_row(res_unico['coef_anual_necessario'], fator_gas)
                     df_anual_row_fmt.index = ["Necessário (FY)"]
+                    
+                    # --- ALTERAÇÃO 5: Aplicar a função de agregação antes de exibir ---
+                    df_anual_agregado = agregar_energia(df_anual_row_fmt, final_kpi_order)
                     st.markdown(f"**📊 Valor Anual**")
-                    st.dataframe(df_anual_row_fmt.style.format(formatter="{:.3f}"))
+                    st.dataframe(df_anual_agregado.style.format(formatter="{:.3f}"))
 
                     metas_finais = metas_finais_por_formato[formato_unico]
                     metas_fmt_out = mult_gas_df(metas_finais, fator_gas)
+                    
+                    # --- ALTERAÇÃO 5: Aplicar a função de agregação antes de exibir ---
+                    metas_agregadas = agregar_energia(metas_fmt_out, final_kpi_order)
                     st.markdown(f"**📅 Metas Mensais Futuras**")
-                    st.dataframe(metas_fmt_out.style.format(formatter="{:.3f}"))
+                    st.dataframe(metas_agregadas.style.format(formatter="{:.3f}"))
                 
                 else: # Múltiplos formatos
                     chips_meses(colunas_ytd, colunas_futuro)
@@ -478,8 +537,11 @@ def main():
                                 geral_coef_anual[kpi] = saldo_restante[kpi] / vol_fut_total
                     df_anual_row_geral = mult_gas_series_as_row(geral_coef_anual, fator_gas)
                     df_anual_row_geral.index = ["Necessário (FY)"]
+                    
+                    # --- ALTERAÇÃO 5: Aplicar a função de agregação antes de exibir ---
+                    df_anual_geral_agregado = agregar_energia(df_anual_row_geral, final_kpi_order)
                     st.markdown("**📊 Valor Anual (Consolidado)**")
-                    st.dataframe(df_anual_row_geral.style.format(formatter="{:.3f}"))
+                    st.dataframe(df_anual_geral_agregado.style.format(formatter="{:.3f}"))
                     
                     volumes_producao_futuros_total_por_mes = pd.Series(0.0, index=colunas_futuro)
                     for formato in nomes_formatos:
@@ -508,8 +570,11 @@ def main():
                             else:
                                 geral_metas.loc[kpi, colunas_futuro] = coef_mensal.fillna(0.0)
                     geral_metas_out = mult_gas_df(geral_metas, fator_gas)
+                    
+                    # --- ALTERAÇÃO 5: Aplicar a função de agregação antes de exibir ---
+                    geral_metas_agregadas = agregar_energia(geral_metas_out, final_kpi_order)
                     st.markdown("**📅 Metas Mensais Futuras (Consolidado)**")
-                    st.dataframe(geral_metas_out.style.format(formatter="{:.3f}"))
+                    st.dataframe(geral_metas_agregadas.style.format(formatter="{:.3f}"))
 
             # Abas por formato (exibição final)
             for pos, formato in enumerate(nomes_formatos, start=1):
@@ -527,18 +592,24 @@ def main():
                     res_formato = resultados_por_formato[formato]
                     df_anual_row_fmt = mult_gas_series_as_row(res_formato['coef_anual_necessario'], fator_gas)
                     df_anual_row_fmt.index = ["Necessário (FY)"]
+                    
+                    # --- ALTERAÇÃO 5: Aplicar a função de agregação antes de exibir ---
+                    df_anual_formato_agregado = agregar_energia(df_anual_row_fmt, final_kpi_order)
                     st.markdown(f"**📊 Valor Anual ({formato})**")
-                    st.dataframe(df_anual_row_fmt.style.format(formatter="{:.3f}"))
+                    st.dataframe(df_anual_formato_agregado.style.format(formatter="{:.3f}"))
 
                     metas_finais = metas_finais_por_formato[formato]
                     metas_fmt_out = mult_gas_df(metas_finais, fator_gas)
+
+                    # --- ALTERAÇÃO 5: Aplicar a função de agregação antes de exibir ---
+                    metas_formato_agregadas = agregar_energia(metas_fmt_out, final_kpi_order)
                     st.markdown(f"**📅 Metas Mensais Futuras ({formato})**")
-                    st.dataframe(metas_fmt_out.style.format(formatter="{:.3f}"))
+                    st.dataframe(metas_formato_agregadas.style.format(formatter="{:.3f}"))
 
             st.success("✅ Cálculos concluídos com sucesso!")
 
     st.markdown("---")
-    st.markdown(f"<div style='text-align: center; color: gray;'>Calculadora Reforecast v12.5 | {datetime.now().year}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div style='text-align: center; color: gray;'>Calculadora Reforecast v12.6 | {datetime.now().year}</div>", unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
