@@ -95,9 +95,9 @@ def main():
     with st.sidebar:
         st.markdown("## ⚠️ Avisos Importantes")
         st.markdown(
+            "- **Nova Regra**: AOP preservado quando o **anual calculado > FY**.\n"
             "- **Formatação**: KPIs com **3 casas decimais**; **Spoilage** com **2 casas**.\n"
-            "- **AOP preservado** quando o **anual calculado < FY** (exibimos o AOP nos meses futuros desse KPI/Formato).\n"
-            "- **Verificação YTD vs FY**: se o **Volume Líquido YTD** exceder o **Volume Líquido FY** (por KPI/Formato), o cálculo daquele item é **bloqueado** (fica zero).\n"
+            "- **Verificação YTD vs FY**: se o **Volume Líquido YTD** exceder o **Volume Líquido FY**, o cálculo do item é **bloqueado**.\n"
             "- Cole valores no formato brasileiro (ex.: `1.234,56`). O app converte automaticamente."
         )
 
@@ -302,7 +302,6 @@ def main():
                 realizado_ytd = (serie_mes[colunas_ytd] * vol_mensal[colunas_ytd]).sum()
                 total_fy = fy * vol_mensal.sum()
 
-            # verificação robusta + aviso
             EPS = 1e-9
             if not np.isfinite(realizado_ytd):
                 realizado_ytd = 0.0
@@ -360,7 +359,6 @@ def main():
 
         return {'bloqueado_por_kpi': bloqueados, 'coef_anual_necessario': pd.Series(resultados_coef_anual), 'metas_futuras': metas_futuras}
 
-    # --------- Helpers para multiplicar GÁS apenas na exibição ----------
     def mult_gas_df(df: pd.DataFrame, fator: float) -> pd.DataFrame:
         if GAS_KPI_NAME in df.index and fator != 1.0:
             df = df.copy()
@@ -368,13 +366,11 @@ def main():
         return df
 
     def mult_gas_series_as_row(series: pd.Series, fator: float) -> pd.DataFrame:
-        """Transforma a série em DF (linha) e multiplica o KPI de gás se existir."""
         df = pd.DataFrame(series).T
         if GAS_KPI_NAME in df.columns and fator != 1.0:
             df = df.copy()
             df[GAS_KPI_NAME] = df[GAS_KPI_NAME] * fator
         return df
-    # -------------------------------------------------------------------
 
     st.header("5️⃣ Cálculo e Resultados")
     if st.button("🚀 Calcular Reforecast", type="primary", use_container_width=True, key=f"{planta_selecionada}_calc"):
@@ -384,8 +380,6 @@ def main():
             aops = {f: dados_formatos[f]['aop'] for f in nomes_formatos}
             aops_show = {f: dados_formatos[f]['aop_show'] for f in nomes_formatos}
 
-            # NENHUMA alteração nos inputs de gás — tudo igual
-
             resultados_por_formato = {}
             bloqueios_por_kpi = {k: set() for k in kpis_da_planta}
             for formato in nomes_formatos:
@@ -394,46 +388,74 @@ def main():
                 for kpi in res['bloqueado_por_kpi']:
                     bloqueios_por_kpi[kpi].add(formato)
 
-            # KPIs bloqueados em algum formato → suprimir no Geral
             kpis_bloqueados_no_geral = {k for k, fset in bloqueios_por_kpi.items() if len(fset) > 0}
             if len(kpis_bloqueados_no_geral) > 0:
                 st.info("ℹ️ Para os KPIs com estouro em algum formato, o consolidado **Geral** foi suprimido para esses KPIs.")
 
+            # --- PREPARAÇÃO DOS DADOS DE EXIBIÇÃO ---
+            # Este dicionário guardará os DataFrames de metas futuras finais para cada formato
+            metas_finais_por_formato = {}
+            avisos_por_formato = {}
+
+            for formato in nomes_formatos:
+                res = resultados_por_formato[formato]
+                df_aop_formato = aops[formato]
+                df_aop_show_formato = aops_show[formato]
+
+                metas_a_exibir = res['metas_futuras'].copy()
+                avisos_performance = []
+
+                for kpi in kpis_da_planta:
+                    coef_calculado = res['coef_anual_necessario'].get(kpi, 0.0)
+                    coef_fy_meta = df_aop_formato.loc[kpi, 'FY']
+
+                    # CONDIÇÃO CORRIGIDA: Calculado > FY significa "melhor performance"
+                    if coef_fy_meta > 0 and coef_calculado > coef_fy_meta:
+                        override_values = df_aop_show_formato.loc[kpi, colunas_futuro]
+                        if override_values.sum() > 0:
+                            avisos_performance.append(f"💡 KPI **{kpi}** teve performance melhor que o AOP. Exibindo valores de 'AOP ou Ciclo Anterior'.")
+                            metas_a_exibir.loc[kpi, colunas_futuro] = override_values
+                
+                metas_finais_por_formato[formato] = metas_a_exibir
+                avisos_por_formato[formato] = avisos_performance
+            # --- FIM DA PREPARAÇÃO ---
+
+
             tab_labels = ['Geral'] + nomes_formatos
             abas = st.tabs(tab_labels)
 
-            with abas[0]:
+            with abas[0]: # ABA GERAL
+                st.subheader("Resultado Geral")
                 if len(nomes_formatos) == 1:
-                    # Espelho do formato único
                     formato_unico = nomes_formatos[0]
-                    st.subheader(f"Resultado Geral (Espelho de {formato_unico})")
+                    st.subheader(f"(Espelho de {formato_unico})")
                     chips_meses(colunas_ytd, colunas_futuro)
+                    
+                    if avisos_por_formato[formato_unico]:
+                        st.write("")
+                        for aviso in avisos_por_formato[formato_unico]:
+                            st.info(aviso)
+                        st.write("")
 
-                    res = resultados_por_formato[formato_unico]
-
-                    # Valor Anual (linha) — multiplicar gás na EXIBIÇÃO
-                    df_anual_row_fmt = mult_gas_series_as_row(res['coef_anual_necessario'], fator_gas)
+                    res_unico = resultados_por_formato[formato_unico]
+                    df_anual_row_fmt = mult_gas_series_as_row(res_unico['coef_anual_necessario'], fator_gas)
                     df_anual_row_fmt.index = ["Necessário (FY)"]
                     st.markdown(f"**📊 Valor Anual**")
                     st.dataframe(df_anual_row_fmt.style.format(formatter="{:.3f}"))
 
-                    # Metas Futuras — multiplicar gás na EXIBIÇÃO
-                    metas_fmt_out = mult_gas_df(res['metas_futuras'], fator_gas)
+                    metas_finais = metas_finais_por_formato[formato_unico]
+                    metas_fmt_out = mult_gas_df(metas_finais, fator_gas)
                     st.markdown(f"**📅 Metas Mensais Futuras**")
                     st.dataframe(metas_fmt_out.style.format(formatter="{:.3f}"))
-                else:
-                    # Consolidado Geral (sem mexer no cálculo)
-                    st.subheader("Consolidado Geral")
+                
+                else: # Múltiplos formatos
                     chips_meses(colunas_ytd, colunas_futuro)
-
-                    # --- CÁLCULO ANUAL GERAL (mantido igual) ---
                     vol_total_df = pd.concat([volumes[f] for f in nomes_formatos]).groupby(level=0).sum()
                     realizado_ytd_total = pd.Series(0.0, index=kpis_da_planta)
                     total_fy_total = pd.Series(0.0, index=kpis_da_planta)
-
                     for kpi in kpis_da_planta:
                         for formato in nomes_formatos:
-                            if formato in bloqueios_por_kpi.get(kpi, set()): 
+                            if formato in bloqueios_por_kpi.get(kpi, set()):
                                 continue
                             vol_formato = volumes[formato].loc['Volume Total']
                             aop_formato = aops[formato].loc[kpi]
@@ -443,10 +465,8 @@ def main():
                             else:
                                 realizado_ytd_total[kpi] += (aop_formato[colunas_ytd] * vol_formato[colunas_ytd]).sum()
                                 total_fy_total[kpi] += aop_formato['FY'] * vol_formato.sum()
-
                     saldo_restante = (total_fy_total - realizado_ytd_total).clip(lower=0)
                     vol_fut_total = vol_total_df.loc['Volume Total', colunas_futuro].sum()
-
                     geral_coef_anual = pd.Series(0.0, index=kpis_da_planta)
                     if vol_fut_total > 0:
                         for kpi in kpis_da_planta:
@@ -457,20 +477,15 @@ def main():
                                 geral_coef_anual[kpi] = (saldo_restante[kpi] / vol_fut_total) * 100.0
                             else:
                                 geral_coef_anual[kpi] = saldo_restante[kpi] / vol_fut_total
-
-                    # Valor Anual (Consolidado) — multiplicar gás na EXIBIÇÃO
                     df_anual_row_geral = mult_gas_series_as_row(geral_coef_anual, fator_gas)
                     df_anual_row_geral.index = ["Necessário (FY)"]
                     st.markdown("**📊 Valor Anual (Consolidado)**")
                     st.dataframe(df_anual_row_geral.style.format(formatter="{:.3f}"))
-
-                    # --- Metas Mensais Futuras (Consolidado) (mantido igual) ---
+                    
                     volumes_producao_futuros_total_por_mes = pd.Series(0.0, index=colunas_futuro)
                     for formato in nomes_formatos:
                         volumes_producao_futuros_total_por_mes += volumes[formato].loc['Volume Total', colunas_futuro]
-
                     geral_metas = pd.DataFrame(0.0, index=kpis_da_planta, columns=MESES)
-                    volumes_liquidos_futuros_total_por_kpi = pd.DataFrame(0.0, index=kpis_da_planta, columns=colunas_futuro)
                     with np.errstate(divide='ignore', invalid='ignore'):
                         for kpi in kpis_da_planta:
                             if kpi in kpis_bloqueados_no_geral:
@@ -483,48 +498,48 @@ def main():
                                 metas_futuras_formato = resultados_por_formato[formato]['metas_futuras']
                                 volume_futuro_formato = volumes[formato].loc['Volume Total', colunas_futuro]
                                 coeficientes_futuros = metas_futuras_formato.loc[kpi, colunas_futuro]
-
                                 if is_spoilage(kpi):
                                     valor_liquido_mensal = (coeficientes_futuros / 100.0) * volume_futuro_formato
                                 else:
                                     valor_liquido_mensal = coeficientes_futuros * volume_futuro_formato
-
                                 soma_liquido_kpi_por_mes += valor_liquido_mensal
-
-                            volumes_liquidos_futuros_total_por_kpi.loc[kpi] = soma_liquido_kpi_por_mes
-                            coef_mensal = volumes_liquidos_futuros_total_por_kpi.loc[kpi] / volumes_producao_futuros_total_por_mes
+                            coef_mensal = soma_liquido_kpi_por_mes / volumes_producao_futuros_total_por_mes
                             if is_spoilage(kpi):
                                 geral_metas.loc[kpi, colunas_futuro] = coef_mensal.fillna(0.0) * 100.0
                             else:
                                 geral_metas.loc[kpi, colunas_futuro] = coef_mensal.fillna(0.0)
-
-                    # Metas (Consolidado) — multiplicar gás na EXIBIÇÃO
                     geral_metas_out = mult_gas_df(geral_metas, fator_gas)
                     st.markdown("**📅 Metas Mensais Futuras (Consolidado)**")
                     st.dataframe(geral_metas_out.style.format(formatter="{:.3f}"))
 
-            # Abas por formato (exibição final — multiplicar gás)
+            # Abas por formato (exibição final)
             for pos, formato in enumerate(nomes_formatos, start=1):
                 with abas[pos]:
                     st.subheader(f"Formato: {formato}")
                     chips_meses(colunas_ytd, colunas_futuro)
-                    res = resultados_por_formato[formato]
-
-                    # Valor Anual — multiplicar gás na EXIBIÇÃO
-                    df_anual_row_fmt = mult_gas_series_as_row(res['coef_anual_necessario'], fator_gas)
+                    
+                    avisos = avisos_por_formato[formato]
+                    if avisos:
+                        st.write("")
+                        for aviso in avisos:
+                            st.info(aviso)
+                        st.write("")
+                    
+                    res_formato = resultados_por_formato[formato]
+                    df_anual_row_fmt = mult_gas_series_as_row(res_formato['coef_anual_necessario'], fator_gas)
                     df_anual_row_fmt.index = ["Necessário (FY)"]
                     st.markdown(f"**📊 Valor Anual ({formato})**")
                     st.dataframe(df_anual_row_fmt.style.format(formatter="{:.3f}"))
 
-                    # Metas Futuras — multiplicar gás na EXIBIÇÃO
-                    metas_fmt_out = mult_gas_df(res['metas_futuras'], fator_gas)
+                    metas_finais = metas_finais_por_formato[formato]
+                    metas_fmt_out = mult_gas_df(metas_finais, fator_gas)
                     st.markdown(f"**📅 Metas Mensais Futuras ({formato})**")
                     st.dataframe(metas_fmt_out.style.format(formatter="{:.3f}"))
 
             st.success("✅ Cálculos concluídos com sucesso!")
 
     st.markdown("---")
-    st.markdown(f"<div style='text-align: center; color: gray;'>Calculadora Reforecast v12.3 (gás multiplicado somente na exibição) | {datetime.now().year}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div style='text-align: center; color: gray;'>Calculadora Reforecast v12.5 | {datetime.now().year}</div>", unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
