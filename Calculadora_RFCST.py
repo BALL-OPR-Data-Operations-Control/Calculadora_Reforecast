@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime
 import numpy as np
 from pathlib import Path
+import winreg # <<< NOVO CÓDIGO 1/3: Importar a biblioteca necessária
 
 # --- ALTERAÇÃO 1: Listas de KPIs para a ENTRADA de dados ---
 # Estas listas agora contêm os KPIs de energia separados para o input do usuário.
@@ -66,6 +67,22 @@ for planta in ['BRAM', 'PYAST', 'BRPET', 'BR3RT']:
 MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
          'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
 
+# <<< NOVO CÓDIGO 2/3: Adicionar a função de detecção do tema do Windows >>>
+def is_windows_dark_mode():
+    """
+    Verifica no registro do Windows se o modo escuro para aplicativos está ativado.
+    Retorna True se estiver no modo escuro, False se estiver no modo claro ou se a chave não for encontrada.
+    """
+    try:
+        key_path = r'Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
+        key_name = 'AppsUseLightTheme'
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path) as key:
+            value, _ = winreg.QueryValueEx(key, key_name)
+            return value == 0
+    except (FileNotFoundError, OSError):
+        # Se a chave não existir ou ocorrer um erro (ex: rodando em outro SO), assume o modo claro.
+        return False
+
 # --- ALTERAÇÃO 3: Nova função para agregar os resultados de energia ---
 def agregar_energia(df: pd.DataFrame, final_kpi_order: list) -> pd.DataFrame:
     """
@@ -87,7 +104,7 @@ def agregar_energia(df: pd.DataFrame, final_kpi_order: list) -> pd.DataFrame:
         df = df.drop(index=[kpi_ponta, kpi_fora_ponta])
 
     elif kpi_ponta in df.columns and kpi_fora_ponta in df.columns:
-         # Soma as colunas (caso de dataframes transpostos como o de valor anual)
+        # Soma as colunas (caso de dataframes transpostos como o de valor anual)
         soma_energia = df[kpi_ponta] + df[kpi_fora_ponta]
         # Adiciona a nova coluna unificada
         df[kpi_unificado] = soma_energia
@@ -99,7 +116,7 @@ def agregar_energia(df: pd.DataFrame, final_kpi_order: list) -> pd.DataFrame:
     if set(df.index).issuperset(set(final_kpi_order)):
         return df.reindex(index=final_kpi_order).dropna(how='all')
     elif set(df.columns).issuperset(set(final_kpi_order)):
-         return df.reindex(columns=final_kpi_order).dropna(how='all')
+        return df.reindex(columns=final_kpi_order).dropna(how='all')
 
     return df
 
@@ -167,6 +184,41 @@ def main():
     BASE_DIR = Path(__file__).parent
     LOGO_URL = BASE_DIR / "logo.png"
 
+    # <<< INÍCIO DA ALTERAÇÃO CORRIGIDA >>>
+    # Começa com uma string vazia
+# <<< SUBSTITUA O BLOCO ANTERIOR POR ESTE NOVO BLOCO FINAL >>>
+    # Começa com uma string vazia
+    dark_mode_css = ""
+    # Se a função detectar o modo escuro, preenche a string com CSS corretivo e específico
+    if is_windows_dark_mode():
+        dark_mode_css = f"""
+        <style>
+            /* Ajustes FINAIS para Modo Escuro do Windows detectado */
+
+            /* 1. Força o texto das métricas a ser ESCURO, para ser legível no fundo claro. */
+            [data-testid="stMetricLabel"] {{
+                color: #6d6d6d !important; /* Um cinza escuro para o rótulo */
+            }}
+            [data-testid="stMetricValue"] {{
+                color: {COR_TEXTO} !important; /* A cor de texto escura principal do seu app */
+            }}
+
+            /* 2. Corrige os avisos (st.info, st.warning) - esta parte já está correta */
+            [data-testid="stAlert"] {{
+                background-color: #2F3136 !important;
+                color: #EAEAEA !important;
+                border: 1px solid #4F545C !important;
+            }}
+            
+            [data-testid="stAlert"] svg {{
+                fill: #EAEAEA !important;
+            }}
+        </style>
+        """
+    # Injeta o CSS (será vazio se não for modo escuro, ou o CSS corretivo se for)
+    st.markdown(dark_mode_css, unsafe_allow_html=True)
+    # <<< FIM DA ALTERAÇÃO CORRIGIDA >>>
+    
     st.markdown(f"""
     <style>
         .stApp {{ background-color: {COR_FUNDO}; color: {COR_TEXTO}; }}
@@ -423,7 +475,6 @@ def main():
     if st.button("🚀 Calcular Reforecast", type="primary", use_container_width=True, key=f"{planta_selecionada}_calc"):
         with st.spinner("Consolidando dados e executando cálculos..."):
             
-            # --- ALTERAÇÃO 4: Definir a lista de KPIs de ORDEM FINAL baseada no tipo da planta ---
             if PLANTAS_CONFIG[planta_selecionada]['tipo'] == 'Cans':
                 final_kpi_order = KPIS_CANS
             else:
@@ -446,7 +497,6 @@ def main():
             if len(kpis_bloqueados_no_geral) > 0:
                 st.info("ℹ️ Para os KPIs com estouro em algum formato, o consolidado **Geral** foi suprimido para esses KPIs.")
 
-            # --- PREPARAÇÃO DOS DADOS DE EXIBIÇÃO ---
             metas_finais_por_formato = {}
             avisos_por_formato = {}
 
@@ -470,8 +520,6 @@ def main():
                 
                 metas_finais_por_formato[formato] = metas_a_exibir
                 avisos_por_formato[formato] = avisos_performance
-            # --- FIM DA PREPARAÇÃO ---
-
 
             tab_labels = ['Geral'] + nomes_formatos
             abas = st.tabs(tab_labels)
@@ -493,7 +541,6 @@ def main():
                     df_anual_row_fmt = mult_gas_series_as_row(res_unico['coef_anual_necessario'], fator_gas)
                     df_anual_row_fmt.index = ["Necessário (FY)"]
                     
-                    # --- ALTERAÇÃO 5: Aplicar a função de agregação antes de exibir ---
                     df_anual_agregado = agregar_energia(df_anual_row_fmt, final_kpi_order)
                     st.markdown(f"**📊 Valor Anual**")
                     st.dataframe(df_anual_agregado.style.format(formatter="{:.3f}"))
@@ -501,7 +548,6 @@ def main():
                     metas_finais = metas_finais_por_formato[formato_unico]
                     metas_fmt_out = mult_gas_df(metas_finais, fator_gas)
                     
-                    # --- ALTERAÇÃO 5: Aplicar a função de agregação antes de exibir ---
                     metas_agregadas = agregar_energia(metas_fmt_out, final_kpi_order)
                     st.markdown(f"**📅 Metas Mensais Futuras**")
                     st.dataframe(metas_agregadas.style.format(formatter="{:.3f}"))
@@ -538,7 +584,6 @@ def main():
                     df_anual_row_geral = mult_gas_series_as_row(geral_coef_anual, fator_gas)
                     df_anual_row_geral.index = ["Necessário (FY)"]
                     
-                    # --- ALTERAÇÃO 5: Aplicar a função de agregação antes de exibir ---
                     df_anual_geral_agregado = agregar_energia(df_anual_row_geral, final_kpi_order)
                     st.markdown("**📊 Valor Anual (Consolidado)**")
                     st.dataframe(df_anual_geral_agregado.style.format(formatter="{:.3f}"))
@@ -571,7 +616,6 @@ def main():
                                 geral_metas.loc[kpi, colunas_futuro] = coef_mensal.fillna(0.0)
                     geral_metas_out = mult_gas_df(geral_metas, fator_gas)
                     
-                    # --- ALTERAÇÃO 5: Aplicar a função de agregação antes de exibir ---
                     geral_metas_agregadas = agregar_energia(geral_metas_out, final_kpi_order)
                     st.markdown("**📅 Metas Mensais Futuras (Consolidado)**")
                     st.dataframe(geral_metas_agregadas.style.format(formatter="{:.3f}"))
@@ -593,7 +637,6 @@ def main():
                     df_anual_row_fmt = mult_gas_series_as_row(res_formato['coef_anual_necessario'], fator_gas)
                     df_anual_row_fmt.index = ["Necessário (FY)"]
                     
-                    # --- ALTERAÇÃO 5: Aplicar a função de agregação antes de exibir ---
                     df_anual_formato_agregado = agregar_energia(df_anual_row_fmt, final_kpi_order)
                     st.markdown(f"**📊 Valor Anual ({formato})**")
                     st.dataframe(df_anual_formato_agregado.style.format(formatter="{:.3f}"))
@@ -601,7 +644,6 @@ def main():
                     metas_finais = metas_finais_por_formato[formato]
                     metas_fmt_out = mult_gas_df(metas_finais, fator_gas)
 
-                    # --- ALTERAÇÃO 5: Aplicar a função de agregação antes de exibir ---
                     metas_formato_agregadas = agregar_energia(metas_fmt_out, final_kpi_order)
                     st.markdown(f"**📅 Metas Mensais Futuras ({formato})**")
                     st.dataframe(metas_formato_agregadas.style.format(formatter="{:.3f}"))
