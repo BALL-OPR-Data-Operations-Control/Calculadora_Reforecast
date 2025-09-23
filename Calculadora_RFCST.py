@@ -3,6 +3,19 @@ import pandas as pd
 from datetime import datetime
 import numpy as np
 from pathlib import Path
+import base64 # Importa a biblioteca para codificar imagens
+
+# --- NOVA FUNÇÃO HELPER ---
+# Esta função lê um arquivo de imagem e o converte para texto (base64)
+def get_image_as_base64(path: Path):
+    try:
+        with open(path, "rb") as f:
+            data = f.read()
+        return base64.b64encode(data).decode()
+    except IOError:
+        # Se não encontrar a imagem, retorna uma string vazia
+        st.error(f"Erro: Imagem não encontrada no caminho: {path}")
+        return ""
 
 # --- Listas de KPIs para a ENTRADA de dados ---
 KPIS_CANS_INPUT = [
@@ -64,10 +77,6 @@ MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
 
 
 def agregar_energia(df: pd.DataFrame, final_kpi_order: list) -> pd.DataFrame:
-    """
-    Soma os KPIs de energia 'Ponta' e 'Fora Ponta' em um único KPI
-    e reordena o DataFrame para a exibição final.
-    """
     df = df.copy()
     kpi_ponta = 'Variable Light (kwh/000)- Ponta'
     kpi_fora_ponta = 'Variable Light (kwh/000)- Fora Ponta'
@@ -151,14 +160,25 @@ def main():
     COR_TAB_HOVER_BG = "#E8EDFF"
 
     BASE_DIR = Path(__file__).parent
-    # Define o caminho para os dois logos
     LOGO_URL = BASE_DIR / "logo.png"
     LOGO_BRANCO_URL = BASE_DIR / "logo_branco.png"
 
-    # Bloco de CSS Universal e Automático
+    # Converte as imagens para base64 para embutir no HTML
+    logo_b64 = get_image_as_base64(LOGO_URL)
+    logo_branco_b64 = get_image_as_base64(LOGO_BRANCO_URL)
+
+    # Cria o bloco HTML com as duas imagens
+    logos_html = f"""
+        <div class="logo-light">
+            <img src="data:image/png;base64,{logo_b64}" width="150">
+        </div>
+        <div class="logo-dark">
+            <img src="data:image/png;base64,{logo_branco_b64}" width="150">
+        </div>
+    """
+
     st.markdown(f"""
     <style>
-        /* Define variáveis de cores para o tema claro (padrão) */
         :root {{
             --cor-primaria: {COR_PRIMARIA};
             --cor-secundaria: {COR_SECUNDARIA};
@@ -173,11 +193,7 @@ def main():
             --cor-tab-borda: {COR_TAB_BORDA};
             --cor-tab-hover-bg: {COR_TAB_HOVER_BG};
         }}
-
-        .stApp {{
-            background-color: var(--cor-fundo);
-            color: var(--cor-texto);
-        }}
+        .stApp {{ background-color: var(--cor-fundo); color: var(--cor-texto); }}
         h1, h2, h3, h4 {{ color: var(--cor-primaria); }}
         [data-testid="stSidebar"] {{ background-color: var(--cor-fundo-secundario); }}
         
@@ -185,39 +201,21 @@ def main():
         .logo-light {{ display: block; }}
         .logo-dark {{ display: none; }}
 
-        .stButton>button {{
-            border: none; background-color: var(--cor-primaria); color: white;
-            border-radius: 8px; padding: 10px 20px; font-weight: 600; transition: .3s;
-        }}
+        .stButton>button {{ border: none; background-color: var(--cor-primaria); color: white; border-radius: 8px; padding: 10px 20px; font-weight: 600; transition: .3s; }}
         .stButton>button:hover {{ background-color: var(--cor-secundaria); transform: scale(1.02); }}
-        .st-emotion-cache-1r6slb0 {{
-            border: 1px solid var(--cor-borda-card);
-            border-radius: 12px; padding: 1rem;
-            background-color: var(--cor-fundo-secundario);
-            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-        }}
+        .st-emotion-cache-1r6slb0 {{ border: 1px solid var(--cor-borda-card); border-radius: 12px; padding: 1rem; background-color: var(--cor-fundo-secundario); box-shadow: 0 2px 8px rgba(0,0,0,0.06); }}
         .stTabs [data-baseweb="tab-list"] {{ gap: 6px; }}
-        .stTabs [data-baseweb="tab-list"] button {{
-            background-color: var(--cor-tab-inativa-bg); color: var(--cor-tab-inativa-tx);
-            border: 1px solid var(--cor-tab-borda); border-bottom: none;
-            padding: 8px 14px; border-radius: 10px 10px 0 0; box-shadow: none;
-        }}
+        .stTabs [data-baseweb="tab-list"] button {{ background-color: var(--cor-tab-inativa-bg); color: var(--cor-tab-inativa-tx); border: 1px solid var(--cor-tab-borda); border-bottom: none; padding: 8px 14px; border-radius: 10px 10px 0 0; box-shadow: none; }}
         .stTabs [data-baseweb="tab-list"] button:hover {{ background-color: var(--cor-tab-hover-bg); }}
         .stTabs [data-baseweb="tab-list"] button p {{ font-weight: 600; margin: 0; }}
-        .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {{
-            background-color: var(--cor-tab-ativa-bg); color: var(--cor-tab-ativa-tx); border-color: var(--cor-tab-ativa-bg);
-        }}
+        .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {{ background-color: var(--cor-tab-ativa-bg); color: var(--cor-tab-ativa-tx); border-color: var(--cor-tab-ativa-bg); }}
         .stTabs [data-baseweb="tab-highlight"] {{ background-color: transparent !important; }}
-        .stTabs [data-baseweb="tab-panel"] {{
-            border: 1px solid var(--cor-tab-borda); border-top: 0;
-            border-radius: 0 10px 10px 10px; padding: 1rem; background: var(--cor-fundo);
-        }}
+        .stTabs [data-baseweb="tab-panel"] {{ border: 1px solid var(--cor-tab-borda); border-top: 0; border-radius: 0 10px 10px 10px; padding: 1rem; background: var(--cor-fundo); }}
         .chips {{ display: flex; gap: .4rem; flex-wrap: wrap; }}
         .chip {{ padding: .14rem .5rem; border-radius: 999px; font-size: .80rem; font-weight: 600; }}
         .chip-ytd {{ background: {COR_CHIP_YTD}; color: white; }}
         .chip-fut {{ background: {COR_CHIP_FUT}; color: white; }}
 
-        /* Regras que o navegador aplicará AUTOMATICAMENTE se o tema do usuário for escuro */
         @media (prefers-color-scheme: dark) {{
             :root {{
                 --cor-primaria: #588BFF;
@@ -234,18 +232,10 @@ def main():
                 --cor-tab-hover-bg: #21262D;
             }}
             
-            /* Inverter a visibilidade dos logos no tema escuro */
             .logo-light {{ display: none; }}
             .logo-dark {{ display: block; }}
-
-            [data-testid="stMetricLabel"], [data-testid="stMetricValue"] {{
-                color: var(--cor-texto) !important;
-            }}
-            [data-testid="stAlert"] {{
-                background-color: #2F3136 !important;
-                color: #EAEAEA !important;
-                border: 1px solid #4F545C !important;
-            }}
+            [data-testid="stMetricLabel"], [data-testid="stMetricValue"] {{ color: var(--cor-texto) !important; }}
+            [data-testid="stAlert"] {{ background-color: #2F3136 !important; color: #EAEAEA !important; border: 1px solid #4F545C !important; }}
             [data-testid="stAlert"] svg {{ fill: #EAEAEA !important; }}
         }}
     </style>
@@ -253,17 +243,8 @@ def main():
 
     col_logo, col_title = st.columns([1, 4])
     with col_logo:
-        try:
-            # Exibir os dois logos, cada um em sua "caixa" (div) controlada pelo CSS
-            st.markdown('<div class="logo-light">', unsafe_allow_html=True)
-            st.image(str(LOGO_URL), width=150)
-            st.markdown('</div>', unsafe_allow_html=True)
-
-            st.markdown('<div class="logo-dark">', unsafe_allow_html=True)
-            st.image(str(LOGO_BRANCO_URL), width=150)
-            st.markdown('</div>', unsafe_allow_html=True)
-        except Exception:
-            pass
+        # Exibe o bloco HTML que contém os dois logos
+        st.markdown(logos_html, unsafe_allow_html=True)
             
     with col_title:
         st.title("Calculadora de Reforecast")
@@ -287,7 +268,6 @@ def main():
         with col2:
             tipo_planta = PLANTAS_CONFIG[planta_selecionada]['tipo']
             st.metric("Tipo de Planta", tipo_planta)
-
         with col3:
             fator_gas = 1.0
             tem_kpi_gas = any(GAS_KPI_NAME in kpi for kpi in PLANTAS_CONFIG[planta_selecionada]['kpis'])
@@ -311,7 +291,6 @@ def main():
             )
             plant_state['mes_reforecast'] = mes_reforecast
             set_plant_store(planta_selecionada, plant_state)
-
         idx_mes_reforecast = MESES.index(mes_reforecast)
         colunas_ytd = MESES[:idx_mes_reforecast + 1]
         colunas_futuro = MESES[idx_mes_reforecast + 1:]
@@ -357,22 +336,18 @@ def main():
             chips_meses(colunas_ytd, colunas_futuro)
             st.write("")
             dados_salvos = plant_state['dados'].get(i, {})
-
             st.markdown("##### 📈 Volume de Produção")
             df_volume_default = dados_salvos.get('volume', pd.DataFrame(0.0, index=["Volume Total"], columns=MESES))
             df_volume_editado = st.data_editor(df_volume_default, key=f"{planta_selecionada}_volume_{i}", use_container_width=True, num_rows="fixed")
             df_volume_editado = corrige_decimais_df(df_volume_editado).astype(float)
-
             st.markdown("##### 🎯 Coeficientes YTD + Ciclo Anterior")
             df_aop_default = dados_salvos.get('aop', pd.DataFrame(index=kpis_da_planta, columns=MESES + ['FY']).fillna(0.0))
             df_aop_editado = st.data_editor(df_aop_default, key=f"{planta_selecionada}_aop_{i}", use_container_width=True, num_rows="fixed", height=420)
             df_aop_editado = corrige_decimais_df(df_aop_editado).astype(float)
-
             st.markdown("##### 🧷 AOP ou Ciclo Anterior (Opcional)")
             df_aop_show_default = dados_salvos.get('aop_show', pd.DataFrame(index=kpis_da_planta, columns=MESES).fillna(0.0))
             df_aop_show_editado = st.data_editor(df_aop_show_default, key=f"{planta_selecionada}_aop_show_{i}", use_container_width=True, num_rows="fixed", height=420)
             df_aop_show_editado = corrige_decimais_df(df_aop_show_editado).astype(float)
-
             plant_state['dados'][i] = {'volume': df_volume_editado.fillna(0.0), 'aop': df_aop_editado.fillna(0.0), 'aop_show': df_aop_show_editado.fillna(0.0)}
             set_plant_store(planta_selecionada, plant_state)
             dados_formatos[formato_atual] = plant_state['dados'][i]
@@ -387,25 +362,19 @@ def main():
         resultados_coef_anual = {}
         metas_futuras = pd.DataFrame(0.0, index=df_aop.index, columns=MESES)
         bloqueados = set()
-
         for kpi in df_aop.index:
             serie = df_aop.loc[kpi].astype(float)
             serie_mes = serie.reindex(MESES).fillna(0.0)
             fy = float(serie.get('FY', 0.0))
-
             if is_spoilage(kpi):
                 realizado_ytd = ((serie_mes[colunas_ytd] / 100.0) * vol_mensal[colunas_ytd]).sum()
                 total_fy = (fy / 100.0) * vol_mensal.sum()
             else:
                 realizado_ytd = (serie_mes[colunas_ytd] * vol_mensal[colunas_ytd]).sum()
                 total_fy = fy * vol_mensal.sum()
-
             EPS = 1e-9
-            if not np.isfinite(realizado_ytd):
-                realizado_ytd = 0.0
-            if not np.isfinite(total_fy):
-                total_fy = 0.0
-
+            if not np.isfinite(realizado_ytd): realizado_ytd = 0.0
+            if not np.isfinite(total_fy): total_fy = 0.0
             cond_excedeu = (total_fy > 0) and ((realizado_ytd > total_fy) or np.isclose(realizado_ytd, total_fy, rtol=0.0, atol=EPS))
             if cond_excedeu:
                 bloqueados.add(kpi)
@@ -413,20 +382,16 @@ def main():
                 metas_futuras.loc[kpi, :] = 0.0
                 st.warning(f"🔔 O KPI **{kpi}** do formato **{formato}** ultrapassou seu limite de saldo líquido.")
                 continue
-
             saldo_restante = max(total_fy - realizado_ytd, 0.0)
             vol_fut = vol_mensal[colunas_futuro].sum()
-
             if vol_fut <= 0.0 or saldo_restante <= 0.0:
                 resultados_coef_anual[kpi] = 0.0
                 metas_futuras.loc[kpi, colunas_futuro] = 0.0
                 continue
-
             if is_spoilage(kpi):
                 estimado_mes = (serie_mes[colunas_futuro] / 100.0) * vol_mensal[colunas_futuro]
             else:
                 estimado_mes = (serie_mes[colunas_futuro]) * vol_mensal[colunas_futuro]
-
             total_estimado = float(estimado_mes.sum())
             if total_estimado <= 0.0:
                 base_prop = vol_mensal[colunas_futuro]
@@ -449,12 +414,10 @@ def main():
                 else:
                     metas_coef = (metas_valor / vol_mensal[colunas_futuro]).replace([np.inf, -np.inf], 0.0).fillna(0.0)
                 metas_futuras.loc[kpi, colunas_futuro] = metas_coef.values
-
             if is_spoilage(kpi):
                 resultados_coef_anual[kpi] = (saldo_restante / vol_fut) * 100.0 if vol_fut > 0 else 0.0
             else:
                 resultados_coef_anual[kpi] = saldo_restante / vol_fut if vol_fut > 0 else 0.0
-
         return {'bloqueado_por_kpi': bloqueados, 'coef_anual_necessario': pd.Series(resultados_coef_anual), 'metas_futuras': metas_futuras}
 
     def mult_gas_df(df: pd.DataFrame, fator: float) -> pd.DataFrame:
@@ -473,17 +436,14 @@ def main():
     st.header("5️⃣ Cálculo e Resultados")
     if st.button("🚀 Calcular Reforecast", type="primary", use_container_width=True, key=f"{planta_selecionada}_calc"):
         with st.spinner("Consolidando dados e executando cálculos..."):
-            
             if PLANTAS_CONFIG[planta_selecionada]['tipo'] == 'Cans':
                 final_kpi_order = KPIS_CANS
             else:
                 final_kpi_order = KPIS_ENDS
-            
             nomes_formatos = plant_state['nomes_formatos']
             volumes = {f: dados_formatos[f]['volume'] for f in nomes_formatos}
             aops = {f: dados_formatos[f]['aop'] for f in nomes_formatos}
             aops_show = {f: dados_formatos[f]['aop_show'] for f in nomes_formatos}
-
             resultados_por_formato = {}
             bloqueios_por_kpi = {k: set() for k in kpis_da_planta}
             for formato in nomes_formatos:
@@ -491,14 +451,11 @@ def main():
                 resultados_por_formato[formato] = res
                 for kpi in res['bloqueado_por_kpi']:
                     bloqueios_por_kpi[kpi].add(formato)
-
             kpis_bloqueados_no_geral = {k for k, fset in bloqueios_por_kpi.items() if len(fset) > 0}
             if len(kpis_bloqueados_no_geral) > 0:
                 st.info("ℹ️ Para os KPIs com estouro em algum formato, o consolidado **Geral** foi suprimido para esses KPIs.")
-
             metas_finais_por_formato = {}
             avisos_por_formato = {}
-
             for formato in nomes_formatos:
                 res = resultados_por_formato[formato]
                 df_aop_formato = aops[formato]
@@ -515,10 +472,8 @@ def main():
                             metas_a_exibir.loc[kpi, colunas_futuro] = override_values
                 metas_finais_por_formato[formato] = metas_a_exibir
                 avisos_por_formato[formato] = avisos_performance
-
             tab_labels = ['Geral'] + nomes_formatos
             abas = st.tabs(tab_labels)
-
             with abas[0]: # ABA GERAL
                 st.subheader("Resultado Geral")
                 if len(nomes_formatos) == 1:
@@ -548,8 +503,7 @@ def main():
                     total_fy_total = pd.Series(0.0, index=kpis_da_planta)
                     for kpi in kpis_da_planta:
                         for formato in nomes_formatos:
-                            if formato in bloqueios_por_kpi.get(kpi, set()):
-                                continue
+                            if formato in bloqueios_por_kpi.get(kpi, set()): continue
                             vol_formato = volumes[formato].loc['Volume Total']
                             aop_formato = aops[formato].loc[kpi]
                             if is_spoilage(kpi):
@@ -563,9 +517,7 @@ def main():
                     geral_coef_anual = pd.Series(0.0, index=kpis_da_planta)
                     if vol_fut_total > 0:
                         for kpi in kpis_da_planta:
-                            if kpi in kpis_bloqueados_no_geral:
-                                geral_coef_anual[kpi] = 0.0
-                                continue
+                            if kpi in kpis_bloqueados_no_geral: geral_coef_anual[kpi] = 0.0; continue
                             if is_spoilage(kpi):
                                 geral_coef_anual[kpi] = (saldo_restante[kpi] / vol_fut_total) * 100.0
                             else:
@@ -581,13 +533,10 @@ def main():
                     geral_metas = pd.DataFrame(0.0, index=kpis_da_planta, columns=MESES)
                     with np.errstate(divide='ignore', invalid='ignore'):
                         for kpi in kpis_da_planta:
-                            if kpi in kpis_bloqueados_no_geral:
-                                geral_metas.loc[kpi, colunas_futuro] = 0.0
-                                continue
+                            if kpi in kpis_bloqueados_no_geral: geral_metas.loc[kpi, colunas_futuro] = 0.0; continue
                             soma_liquido_kpi_por_mes = pd.Series(0.0, index=colunas_futuro)
                             for formato in nomes_formatos:
-                                if formato in bloqueios_por_kpi.get(kpi, set()):
-                                    continue
+                                if formato in bloqueios_por_kpi.get(kpi, set()): continue
                                 metas_futuras_formato = resultados_por_formato[formato]['metas_futuras']
                                 volume_futuro_formato = volumes[formato].loc['Volume Total', colunas_futuro]
                                 coeficientes_futuros = metas_futuras_formato.loc[kpi, colunas_futuro]
@@ -605,7 +554,6 @@ def main():
                     geral_metas_agregadas = agregar_energia(geral_metas_out, final_kpi_order)
                     st.markdown("**📅 Metas Mensais Futuras (Consolidado)**")
                     st.dataframe(geral_metas_agregadas.style.format(formatter="{:.3f}"))
-
             for pos, formato in enumerate(nomes_formatos, start=1):
                 with abas[pos]:
                     st.subheader(f"Formato: {formato}")
@@ -627,7 +575,6 @@ def main():
                     metas_formato_agregadas = agregar_energia(metas_fmt_out, final_kpi_order)
                     st.markdown(f"**📅 Metas Mensais Futuras ({formato})**")
                     st.dataframe(metas_formato_agregadas.style.format(formatter="{:.3f}"))
-
             st.success("✅ Cálculos concluídos com sucesso!")
 
     st.markdown("---")
