@@ -151,10 +151,11 @@ def main():
     COR_TAB_HOVER_BG = "#E8EDFF"
 
     BASE_DIR = Path(__file__).parent
+    # Define o caminho para os dois logos
     LOGO_URL = BASE_DIR / "logo.png"
+    LOGO_BRANCO_URL = BASE_DIR / "logo_branco.png"
 
-    # --- Bloco de CSS Universal e Automático ---
-    # Este único bloco de CSS cuida dos temas claro e escuro para todos os usuários.
+    # Bloco de CSS Universal e Automático
     st.markdown(f"""
     <style>
         /* Define variáveis de cores para o tema claro (padrão) */
@@ -180,19 +181,21 @@ def main():
         h1, h2, h3, h4 {{ color: var(--cor-primaria); }}
         [data-testid="stSidebar"] {{ background-color: var(--cor-fundo-secundario); }}
         
+        /* Classes para controlar a visibilidade dos logos */
+        .logo-light {{ display: block; }}
+        .logo-dark {{ display: none; }}
+
         .stButton>button {{
             border: none; background-color: var(--cor-primaria); color: white;
             border-radius: 8px; padding: 10px 20px; font-weight: 600; transition: .3s;
         }}
         .stButton>button:hover {{ background-color: var(--cor-secundaria); transform: scale(1.02); }}
-        
         .st-emotion-cache-1r6slb0 {{
             border: 1px solid var(--cor-borda-card);
             border-radius: 12px; padding: 1rem;
             background-color: var(--cor-fundo-secundario);
             box-shadow: 0 2px 8px rgba(0,0,0,0.06);
         }}
-        
         .stTabs [data-baseweb="tab-list"] {{ gap: 6px; }}
         .stTabs [data-baseweb="tab-list"] button {{
             background-color: var(--cor-tab-inativa-bg); color: var(--cor-tab-inativa-tx);
@@ -209,7 +212,6 @@ def main():
             border: 1px solid var(--cor-tab-borda); border-top: 0;
             border-radius: 0 10px 10px 10px; padding: 1rem; background: var(--cor-fundo);
         }}
-        
         .chips {{ display: flex; gap: .4rem; flex-wrap: wrap; }}
         .chip {{ padding: .14rem .5rem; border-radius: 999px; font-size: .80rem; font-weight: 600; }}
         .chip-ytd {{ background: {COR_CHIP_YTD}; color: white; }}
@@ -217,7 +219,6 @@ def main():
 
         /* Regras que o navegador aplicará AUTOMATICAMENTE se o tema do usuário for escuro */
         @media (prefers-color-scheme: dark) {{
-            /* Sobrescreve as variáveis de cor para o modo escuro */
             :root {{
                 --cor-primaria: #588BFF;
                 --cor-secundaria: #84A9FF;
@@ -232,13 +233,14 @@ def main():
                 --cor-tab-borda: #30363D;
                 --cor-tab-hover-bg: #21262D;
             }}
+            
+            /* Inverter a visibilidade dos logos no tema escuro */
+            .logo-light {{ display: none; }}
+            .logo-dark {{ display: block; }}
 
-            /* Corrigir o texto das métricas para ser CLARO no modo escuro */
             [data-testid="stMetricLabel"], [data-testid="stMetricValue"] {{
                 color: var(--cor-texto) !important;
             }}
-            
-            /* Os alertas ficam com tema escuro */
             [data-testid="stAlert"] {{
                 background-color: #2F3136 !important;
                 color: #EAEAEA !important;
@@ -252,9 +254,17 @@ def main():
     col_logo, col_title = st.columns([1, 4])
     with col_logo:
         try:
+            # Exibir os dois logos, cada um em sua "caixa" (div) controlada pelo CSS
+            st.markdown('<div class="logo-light">', unsafe_allow_html=True)
             st.image(str(LOGO_URL), width=150)
+            st.markdown('</div>', unsafe_allow_html=True)
+
+            st.markdown('<div class="logo-dark">', unsafe_allow_html=True)
+            st.image(str(LOGO_BRANCO_URL), width=150)
+            st.markdown('</div>', unsafe_allow_html=True)
         except Exception:
             pass
+            
     with col_title:
         st.title("Calculadora de Reforecast")
         st.subheader("Readequação ao AOP")
