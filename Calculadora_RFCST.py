@@ -3,28 +3,25 @@ import pandas as pd
 from datetime import datetime
 import numpy as np
 from pathlib import Path
-import winreg # <<< NOVO CÓDIGO 1/3: Importar a biblioteca necessária
 
-# --- ALTERAÇÃO 1: Listas de KPIs para a ENTRADA de dados ---
-# Estas listas agora contêm os KPIs de energia separados para o input do usuário.
+# --- Listas de KPIs para a ENTRADA de dados ---
 KPIS_CANS_INPUT = [
     'Gas (m³/000) / (kg/000)', 'Ink Usage (kg/000)', 'Inside Spray Usage(kg/000)', 'Metal Can (kg/000)','Scrap (kg/000)', 'Spoilage(%)',
-    'Variable Light (kwh/000)- Fora Ponta', # <-- Energia separada
-    'Variable Light (kwh/000)- Ponta',      # <-- Energia separada
+    'Variable Light (kwh/000)- Fora Ponta',
+    'Variable Light (kwh/000)- Ponta',
     'Varnish Usage (kg/000)',
     'Water & Sewer (m³/000)'
 ]
 
 KPIS_ENDS_INPUT = [
     'Metal End (kg/000)','Spoilage (%)','Tab Scrap (kg/000)','Compound Usage (kg/000)',
-    'Variable Light (kwh/000)- Fora Ponta', # <-- Energia separada
-    'Variable Light (kwh/000)- Ponta',      # <-- Energia separada
+    'Variable Light (kwh/000)- Fora Ponta',
+    'Variable Light (kwh/000)- Ponta',
     'Water & Sewer (m³/000)',
     'Metal Tab (kg/000)','End Scrap (kg/000)'
 ]
 
-# --- ALTERAÇÃO 2: Listas de KPIs para a ORDEM da exibição final ---
-# Estas listas mantêm o KPI de energia unificado e definem a ordem final nas tabelas de resultado.
+# --- Listas de KPIs para a ORDEM da exibição final ---
 KPIS_CANS = [
     'Gas (m³/000) / (kg/000)', 'Ink Usage (kg/000)', 'Inside Spray Usage(kg/000)', 'Metal Can (kg/000)','Scrap (kg/000)', 'Spoilage(%)',
     'Variable Light (kwh/000)', 'Varnish Usage (kg/000)',
@@ -38,52 +35,34 @@ KPIS_ENDS = [
     'Metal Tab (kg/000)','End Scrap (kg/000)'
 ]
 
-
 # -------------------------------
 # CONFIGURAÇÃO DE GÁS
 # -------------------------------
 GAS_FACTORS = {
-    'GLP': 12.78, # Fator de conversão para GLP (kg -> kWh)
-    'GN': 10.76   # Fator de conversão para Gás Natural (m³ -> kWh)
+    'GLP': 12.78,
+    'GN': 10.76
 }
 PLANTAS_GAS_TIPO = {
-    # Por padrão, todas as plantas usam 'GN'. Liste aqui apenas as exceções.
     'BRAC': 'GLP',
     'BRFR': 'GLP',
     'PYAS': 'GLP',
 }
-GAS_KPI_NAME = 'Gas (m³/000) / (kg/000)' # Nome do KPI no input e em toda a lógica
+GAS_KPI_NAME = 'Gas (m³/000) / (kg/000)'
 # -------------------------------
 
 PLANTAS_CONFIG = {}
 # Plantas de latas
 for planta in ['ARBA', 'BRBR', 'BR3R', 'BRJC', 'BRPA', 'BRET', 'BRPE', 'BRFR', 'BRAC', 'PYAS', 'CLSA']:
-    PLANTAS_CONFIG[planta] = {'tipo': 'Cans', 'kpis': KPIS_CANS_INPUT} # <-- Usar KPIs de INPUT aqui
+    PLANTAS_CONFIG[planta] = {'tipo': 'Cans', 'kpis': KPIS_CANS_INPUT}
 # Plantas de tampas
 for planta in ['BRAM', 'PYAST', 'BRPET', 'BR3RT']:
-    PLANTAS_CONFIG[planta] = {'tipo': 'Ends', 'kpis': KPIS_ENDS_INPUT} # <-- Usar KPIs de INPUT aqui
+    PLANTAS_CONFIG[planta] = {'tipo': 'Ends', 'kpis': KPIS_ENDS_INPUT}
 
 # MESES abreviados
 MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
          'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
 
-# <<< NOVO CÓDIGO 2/3: Adicionar a função de detecção do tema do Windows >>>
-def is_windows_dark_mode():
-    """
-    Verifica no registro do Windows se o modo escuro para aplicativos está ativado.
-    Retorna True se estiver no modo escuro, False se estiver no modo claro ou se a chave não for encontrada.
-    """
-    try:
-        key_path = r'Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
-        key_name = 'AppsUseLightTheme'
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path) as key:
-            value, _ = winreg.QueryValueEx(key, key_name)
-            return value == 0
-    except (FileNotFoundError, OSError):
-        # Se a chave não existir ou ocorrer um erro (ex: rodando em outro SO), assume o modo claro.
-        return False
 
-# --- ALTERAÇÃO 3: Nova função para agregar os resultados de energia ---
 def agregar_energia(df: pd.DataFrame, final_kpi_order: list) -> pd.DataFrame:
     """
     Soma os KPIs de energia 'Ponta' e 'Fora Ponta' em um único KPI
@@ -94,25 +73,16 @@ def agregar_energia(df: pd.DataFrame, final_kpi_order: list) -> pd.DataFrame:
     kpi_fora_ponta = 'Variable Light (kwh/000)- Fora Ponta'
     kpi_unificado = 'Variable Light (kwh/000)'
 
-    # Verifica se os dois KPIs de energia existem no dataframe (index ou colunas)
     if kpi_ponta in df.index and kpi_fora_ponta in df.index:
-        # Soma as linhas
         soma_energia = df.loc[kpi_ponta] + df.loc[kpi_fora_ponta]
-        # Adiciona a nova linha unificada
         df.loc[kpi_unificado] = soma_energia
-        # Remove as linhas originais
         df = df.drop(index=[kpi_ponta, kpi_fora_ponta])
 
     elif kpi_ponta in df.columns and kpi_fora_ponta in df.columns:
-        # Soma as colunas (caso de dataframes transpostos como o de valor anual)
         soma_energia = df[kpi_ponta] + df[kpi_fora_ponta]
-        # Adiciona a nova coluna unificada
         df[kpi_unificado] = soma_energia
-        # Remove as colunas originais
         df = df.drop(columns=[kpi_ponta, kpi_fora_ponta])
 
-    # Reordena o dataframe para a ordem de exibição final
-    # A reindexação funciona tanto para linhas quanto para colunas
     if set(df.index).issuperset(set(final_kpi_order)):
         return df.reindex(index=final_kpi_order).dropna(how='all')
     elif set(df.columns).issuperset(set(final_kpi_order)):
@@ -129,7 +99,6 @@ def validar_dados(vol_df, aop_df):
     return erros
 
 def get_plant_store(planta: str):
-    """Obtém (ou cria) o estado persistente da planta atual."""
     store = st.session_state.setdefault('plant_store', {})
     if planta not in store:
         store[planta] = {
@@ -184,75 +153,98 @@ def main():
     BASE_DIR = Path(__file__).parent
     LOGO_URL = BASE_DIR / "logo.png"
 
-    # <<< INÍCIO DA ALTERAÇÃO CORRIGIDA >>>
-    # Começa com uma string vazia
-# <<< SUBSTITUA O BLOCO ANTERIOR POR ESTE NOVO BLOCO FINAL >>>
-    # Começa com uma string vazia
-    dark_mode_css = ""
-    # Se a função detectar o modo escuro, preenche a string com CSS corretivo e específico
-    if is_windows_dark_mode():
-        dark_mode_css = f"""
-        <style>
-            /* Ajustes FINAIS para Modo Escuro do Windows detectado */
+    # --- Bloco de CSS Universal e Automático ---
+    # Este único bloco de CSS cuida dos temas claro e escuro para todos os usuários.
+    st.markdown(f"""
+    <style>
+        /* Define variáveis de cores para o tema claro (padrão) */
+        :root {{
+            --cor-primaria: {COR_PRIMARIA};
+            --cor-secundaria: {COR_SECUNDARIA};
+            --cor-fundo: {COR_FUNDO};
+            --cor-fundo-secundario: {COR_FUNDO_SECUNDARIO};
+            --cor-borda-card: {COR_BORDA_CARD};
+            --cor-texto: {COR_TEXTO};
+            --cor-tab-ativa-bg: {COR_TAB_ATIVA_BG};
+            --cor-tab-ativa-tx: {COR_TAB_ATIVA_TX};
+            --cor-tab-inativa-bg: {COR_TAB_INATIVA_BG};
+            --cor-tab-inativa-tx: {COR_TAB_INATIVA_TX};
+            --cor-tab-borda: {COR_TAB_BORDA};
+            --cor-tab-hover-bg: {COR_TAB_HOVER_BG};
+        }}
 
-            /* 1. Força o texto das métricas a ser ESCURO, para ser legível no fundo claro. */
-            [data-testid="stMetricLabel"] {{
-                color: #6d6d6d !important; /* Um cinza escuro para o rótulo */
-            }}
-            [data-testid="stMetricValue"] {{
-                color: {COR_TEXTO} !important; /* A cor de texto escura principal do seu app */
+        .stApp {{
+            background-color: var(--cor-fundo);
+            color: var(--cor-texto);
+        }}
+        h1, h2, h3, h4 {{ color: var(--cor-primaria); }}
+        [data-testid="stSidebar"] {{ background-color: var(--cor-fundo-secundario); }}
+        
+        .stButton>button {{
+            border: none; background-color: var(--cor-primaria); color: white;
+            border-radius: 8px; padding: 10px 20px; font-weight: 600; transition: .3s;
+        }}
+        .stButton>button:hover {{ background-color: var(--cor-secundaria); transform: scale(1.02); }}
+        
+        .st-emotion-cache-1r6slb0 {{
+            border: 1px solid var(--cor-borda-card);
+            border-radius: 12px; padding: 1rem;
+            background-color: var(--cor-fundo-secundario);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        }}
+        
+        .stTabs [data-baseweb="tab-list"] {{ gap: 6px; }}
+        .stTabs [data-baseweb="tab-list"] button {{
+            background-color: var(--cor-tab-inativa-bg); color: var(--cor-tab-inativa-tx);
+            border: 1px solid var(--cor-tab-borda); border-bottom: none;
+            padding: 8px 14px; border-radius: 10px 10px 0 0; box-shadow: none;
+        }}
+        .stTabs [data-baseweb="tab-list"] button:hover {{ background-color: var(--cor-tab-hover-bg); }}
+        .stTabs [data-baseweb="tab-list"] button p {{ font-weight: 600; margin: 0; }}
+        .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {{
+            background-color: var(--cor-tab-ativa-bg); color: var(--cor-tab-ativa-tx); border-color: var(--cor-tab-ativa-bg);
+        }}
+        .stTabs [data-baseweb="tab-highlight"] {{ background-color: transparent !important; }}
+        .stTabs [data-baseweb="tab-panel"] {{
+            border: 1px solid var(--cor-tab-borda); border-top: 0;
+            border-radius: 0 10px 10px 10px; padding: 1rem; background: var(--cor-fundo);
+        }}
+        
+        .chips {{ display: flex; gap: .4rem; flex-wrap: wrap; }}
+        .chip {{ padding: .14rem .5rem; border-radius: 999px; font-size: .80rem; font-weight: 600; }}
+        .chip-ytd {{ background: {COR_CHIP_YTD}; color: white; }}
+        .chip-fut {{ background: {COR_CHIP_FUT}; color: white; }}
+
+        /* Regras que o navegador aplicará AUTOMATICAMENTE se o tema do usuário for escuro */
+        @media (prefers-color-scheme: dark) {{
+            /* Sobrescreve as variáveis de cor para o modo escuro */
+            :root {{
+                --cor-primaria: #588BFF;
+                --cor-secundaria: #84A9FF;
+                --cor-fundo: #0E1117;
+                --cor-fundo-secundario: #161B22;
+                --cor-borda-card: #30363D;
+                --cor-texto: #EAEAEA;
+                --cor-tab-ativa-bg: #588BFF;
+                --cor-tab-ativa-tx: #FFFFFF;
+                --cor-tab-inativa-bg: #161B22;
+                --cor-tab-inativa-tx: #EAEAEA;
+                --cor-tab-borda: #30363D;
+                --cor-tab-hover-bg: #21262D;
             }}
 
-            /* 2. Corrige os avisos (st.info, st.warning) - esta parte já está correta */
+            /* O st.metric mantém o fundo claro, então forçamos o texto a ser escuro */
+            [data-testid="stMetricLabel"] {{ color: #333333 !important; }}
+            [data-testid="stMetricValue"] {{ color: #333333 !important; }}
+            
+            /* Os alertas ficam com tema escuro */
             [data-testid="stAlert"] {{
                 background-color: #2F3136 !important;
                 color: #EAEAEA !important;
                 border: 1px solid #4F545C !important;
             }}
-            
-            [data-testid="stAlert"] svg {{
-                fill: #EAEAEA !important;
-            }}
-        </style>
-        """
-    # Injeta o CSS (será vazio se não for modo escuro, ou o CSS corretivo se for)
-    st.markdown(dark_mode_css, unsafe_allow_html=True)
-    # <<< FIM DA ALTERAÇÃO CORRIGIDA >>>
-    
-    st.markdown(f"""
-    <style>
-        .stApp {{ background-color: {COR_FUNDO}; color: {COR_TEXTO}; }}
-        h1, h2, h3, h4 {{ color: {COR_PRIMARIA}; }}
-        [data-testid="stSidebar"] {{ background-color: {COR_FUNDO_SECUNDARIO}; }}
-        .stButton>button {{
-            border: none; background-color: {COR_PRIMARIA}; color: white;
-            border-radius: 8px; padding: 10px 20px; font-weight: 600; transition: .3s;
+            [data-testid="stAlert"] svg {{ fill: #EAEAEA !important; }}
         }}
-        .stButton>button:hover {{ background-color: {COR_SECUNDARIA}; transform: scale(1.02); }}
-        .st-emotion-cache-1r6slb0 {{
-            border: 1px solid {COR_BORDA_CARD}; border-radius: 12px; padding: 1rem;
-            background-color: {COR_FUNDO_SECUNDARIO}; box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-        }}
-        .stTabs [data-baseweb="tab-list"] {{ gap: 6px; }}
-        .stTabs [data-baseweb="tab-list"] button {{
-            background-color: {COR_TAB_INATIVA_BG}; color: {COR_TAB_INATIVA_TX};
-            border: 1px solid {COR_TAB_BORDA}; border-bottom: none;
-            padding: 8px 14px; border-radius: 10px 10px 0 0; box-shadow: none;
-        }}
-        .stTabs [data-baseweb="tab-list"] button:hover {{ background-color: {COR_TAB_HOVER_BG}; }}
-        .stTabs [data-baseweb="tab-list"] button p {{ font-weight: 600; margin: 0; }}
-        .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {{
-            background-color: {COR_TAB_ATIVA_BG}; color: {COR_TAB_ATIVA_TX}; border-color: {COR_TAB_ATIVA_BG};
-        }}
-        .stTabs [data-baseweb="tab-highlight"] {{ background-color: transparent !important; }}
-        .stTabs [data-baseweb="tab-panel"] {{
-            border: 1px solid {COR_TAB_BORDA}; border-top: 0;
-            border-radius: 0 10px 10px 10px; padding: 1rem; background: {COR_FUNDO};
-        }}
-        .chips {{ display: flex; gap: .4rem; flex-wrap: wrap; }}
-        .chip {{ padding: .14rem .5rem; border-radius: 999px; font-size: .80rem; font-weight: 600; }}
-        .chip-ytd {{ background: {COR_CHIP_YTD}; color: white; }}
-        .chip-fut {{ background: {COR_CHIP_FUT}; color: white; }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -286,7 +278,6 @@ def main():
             st.metric("Tipo de Planta", tipo_planta)
 
         with col3:
-            # Determina fator do gás da planta (para usar SÓ no fim, na exibição)
             fator_gas = 1.0
             tem_kpi_gas = any(GAS_KPI_NAME in kpi for kpi in PLANTAS_CONFIG[planta_selecionada]['kpis'])
             if tem_kpi_gas:
@@ -380,9 +371,6 @@ def main():
     def is_spoilage(kpi_name: str) -> bool:
         return 'spoilage' in kpi_name.lower()
 
-    # -----------------------------
-    # CÁLCULO POR FORMATO (sem mexer em gás; gás só na exibição final)
-    # -----------------------------
     def calc_kpi_por_formato(formato: str, df_vol: pd.DataFrame, df_aop: pd.DataFrame):
         vol_mensal = df_vol.loc['Volume Total'].astype(float).reindex(MESES).fillna(0.0)
         resultados_coef_anual = {}
@@ -504,20 +492,16 @@ def main():
                 res = resultados_por_formato[formato]
                 df_aop_formato = aops[formato]
                 df_aop_show_formato = aops_show[formato]
-
                 metas_a_exibir = res['metas_futuras'].copy()
                 avisos_performance = []
-
                 for kpi in kpis_da_planta:
                     coef_calculado = res['coef_anual_necessario'].get(kpi, 0.0)
                     coef_fy_meta = df_aop_formato.loc[kpi, 'FY']
-
                     if coef_fy_meta > 0 and coef_calculado > coef_fy_meta:
                         override_values = df_aop_show_formato.loc[kpi, colunas_futuro]
                         if override_values.sum() > 0:
                             avisos_performance.append(f"💡 KPI **{kpi}** teve performance melhor que o AOP. Exibindo valores de 'AOP ou Ciclo Anterior'.")
                             metas_a_exibir.loc[kpi, colunas_futuro] = override_values
-                
                 metas_finais_por_formato[formato] = metas_a_exibir
                 avisos_por_formato[formato] = avisos_performance
 
@@ -530,28 +514,22 @@ def main():
                     formato_unico = nomes_formatos[0]
                     st.subheader(f"(Espelho de {formato_unico})")
                     chips_meses(colunas_ytd, colunas_futuro)
-                    
                     if avisos_por_formato[formato_unico]:
                         st.write("")
                         for aviso in avisos_por_formato[formato_unico]:
                             st.info(aviso)
                         st.write("")
-
                     res_unico = resultados_por_formato[formato_unico]
                     df_anual_row_fmt = mult_gas_series_as_row(res_unico['coef_anual_necessario'], fator_gas)
                     df_anual_row_fmt.index = ["Necessário (FY)"]
-                    
                     df_anual_agregado = agregar_energia(df_anual_row_fmt, final_kpi_order)
                     st.markdown(f"**📊 Valor Anual**")
                     st.dataframe(df_anual_agregado.style.format(formatter="{:.3f}"))
-
                     metas_finais = metas_finais_por_formato[formato_unico]
                     metas_fmt_out = mult_gas_df(metas_finais, fator_gas)
-                    
                     metas_agregadas = agregar_energia(metas_fmt_out, final_kpi_order)
                     st.markdown(f"**📅 Metas Mensais Futuras**")
                     st.dataframe(metas_agregadas.style.format(formatter="{:.3f}"))
-                
                 else: # Múltiplos formatos
                     chips_meses(colunas_ytd, colunas_futuro)
                     vol_total_df = pd.concat([volumes[f] for f in nomes_formatos]).groupby(level=0).sum()
@@ -583,11 +561,9 @@ def main():
                                 geral_coef_anual[kpi] = saldo_restante[kpi] / vol_fut_total
                     df_anual_row_geral = mult_gas_series_as_row(geral_coef_anual, fator_gas)
                     df_anual_row_geral.index = ["Necessário (FY)"]
-                    
                     df_anual_geral_agregado = agregar_energia(df_anual_row_geral, final_kpi_order)
                     st.markdown("**📊 Valor Anual (Consolidado)**")
                     st.dataframe(df_anual_geral_agregado.style.format(formatter="{:.3f}"))
-                    
                     volumes_producao_futuros_total_por_mes = pd.Series(0.0, index=colunas_futuro)
                     for formato in nomes_formatos:
                         volumes_producao_futuros_total_por_mes += volumes[formato].loc['Volume Total', colunas_futuro]
@@ -615,35 +591,28 @@ def main():
                             else:
                                 geral_metas.loc[kpi, colunas_futuro] = coef_mensal.fillna(0.0)
                     geral_metas_out = mult_gas_df(geral_metas, fator_gas)
-                    
                     geral_metas_agregadas = agregar_energia(geral_metas_out, final_kpi_order)
                     st.markdown("**📅 Metas Mensais Futuras (Consolidado)**")
                     st.dataframe(geral_metas_agregadas.style.format(formatter="{:.3f}"))
 
-            # Abas por formato (exibição final)
             for pos, formato in enumerate(nomes_formatos, start=1):
                 with abas[pos]:
                     st.subheader(f"Formato: {formato}")
                     chips_meses(colunas_ytd, colunas_futuro)
-                    
                     avisos = avisos_por_formato[formato]
                     if avisos:
                         st.write("")
                         for aviso in avisos:
                             st.info(aviso)
                         st.write("")
-                    
                     res_formato = resultados_por_formato[formato]
                     df_anual_row_fmt = mult_gas_series_as_row(res_formato['coef_anual_necessario'], fator_gas)
                     df_anual_row_fmt.index = ["Necessário (FY)"]
-                    
                     df_anual_formato_agregado = agregar_energia(df_anual_row_fmt, final_kpi_order)
                     st.markdown(f"**📊 Valor Anual ({formato})**")
                     st.dataframe(df_anual_formato_agregado.style.format(formatter="{:.3f}"))
-
                     metas_finais = metas_finais_por_formato[formato]
                     metas_fmt_out = mult_gas_df(metas_finais, fator_gas)
-
                     metas_formato_agregadas = agregar_energia(metas_fmt_out, final_kpi_order)
                     st.markdown(f"**📅 Metas Mensais Futuras ({formato})**")
                     st.dataframe(metas_formato_agregadas.style.format(formatter="{:.3f}"))
