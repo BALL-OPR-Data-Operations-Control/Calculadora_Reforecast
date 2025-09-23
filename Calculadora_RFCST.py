@@ -233,9 +233,10 @@ def main():
                 --cor-tab-hover-bg: #21262D;
             }}
 
-            /* O st.metric mantém o fundo claro, então forçamos o texto a ser escuro */
-            [data-testid="stMetricLabel"] {{ color: #333333 !important; }}
-            [data-testid="stMetricValue"] {{ color: #333333 !important; }}
+            /* Corrigir o texto das métricas para ser CLARO no modo escuro */
+            [data-testid="stMetricLabel"], [data-testid="stMetricValue"] {{
+                color: var(--cor-texto) !important;
+            }}
             
             /* Os alertas ficam com tema escuro */
             [data-testid="stAlert"] {{
