@@ -36,7 +36,7 @@ KPIS_ENDS_INPUT = [
 
 # --- Listas de KPIs para a ORDEM da exibição final ---
 KPIS_CANS = [
-    'Gas (m³/000) / (kg/000)', 'Ink Usage (kg/000)', 'Inside Spray Usage(kg/000)', 'Metal Can (kg/000)','Scrap (kg/000)', 'Spoilage(%)',
+    'Thermal (kwh/000)', 'Ink Usage (kg/000)', 'Inside Spray Usage(kg/000)', 'Metal Can (kg/000)','Scrap (kg/000)', 'Spoilage(%)',
     'Variable Light (kwh/000)', 'Varnish Usage (kg/000)',
     'Water & Sewer (m³/000)'
 ]
