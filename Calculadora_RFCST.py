@@ -60,7 +60,7 @@ PLANTAS_GAS_TIPO = {
     'BRFR': 'GLP',
     'PYAS': 'GLP',
 }
-GAS_KPI_NAME = 'Gas (m³/000) / (kg/000)'
+GAS_KPI_NAME = 'Thermal (kwh/000)'
 # -------------------------------
 
 PLANTAS_CONFIG = {}
