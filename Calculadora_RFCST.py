@@ -5,12 +5,47 @@ import numpy as np
 from pathlib import Path
 import base64 # Importa a biblioteca para codificar imagens
 
-# --- NOVA FUNÇÃO HELPER (COLORCODE DE ZEROS NOS OUTPUTS) ---
+# --- HELPERS DE ESTILO ---
 def highlight_zero(val):
+    """Pinta de vermelho suave células == 0 (para as tabelas de Valor Anual)."""
     try:
         return "background-color: rgba(255, 0, 0, 0.18);" if float(val) == 0 else ""
     except (TypeError, ValueError):
         return ""
+
+def style_metas_with_overrides(df: pd.DataFrame, overridden_set: set):
+    """
+    Estilo para as 'Metas Mensais Futuras':
+    - Linhas (KPIs) que repetiram o AOP (overridden_set) ficam verdes suaves.
+    - Células == 0 ficam vermelhas, exceto nas linhas verdes.
+
+    Observação: Alguns KPIs podem ter sido renomeados (ex.: GAS -> 'Thermal (kwh/000)').
+    Por isso, intersectamos overridden_set com o índice real do df.
+    """
+    styles = pd.DataFrame("", index=df.index, columns=df.columns)
+
+    # Garante que só tentamos estilizar linhas que realmente existem no df
+    present_overrides = set(overridden_set) & set(df.index)
+
+    # pinta de VERDE as linhas que repetiram o AOP
+    if present_overrides:
+        styles.loc[list(present_overrides), :] = "background-color: rgba(0, 200, 0, 0.18); color: #0b3d0b;"
+
+    # pinta de VERMELHO as células == 0, exceto nas linhas verdes
+    mask_zero = df.eq(0)
+    if present_overrides:
+        mask_zero.loc[list(present_overrides), :] = False  # não sobrescrever o verde
+
+    styles = styles.mask(mask_zero, "background-color: rgba(255, 0, 0, 0.18); color: #7a0000;")
+
+    return styles
+
+
+def style_metas_basic(df: pd.DataFrame):
+    """Versão simples (quando não há overrides): pinta zeros de vermelho suave."""
+    styles = pd.DataFrame("", index=df.index, columns=df.columns)
+    styles = styles.mask(df.eq(0), "background-color: rgba(255, 0, 0, 0.18); color: #7a0000;")
+    return styles
 
 # --- NOVA FUNÇÃO HELPER ---
 # Esta função lê um arquivo de imagem e o converte para texto (base64)
@@ -98,8 +133,7 @@ def agregar_energia(df: pd.DataFrame, final_kpi_order: list) -> pd.DataFrame:
         order_copy.remove(kpi_unificado)
 
     # Adiciona os KPIs de energia (se existirem) para reindexação temporária
-    temp_order = order_copy + [kpi for kpi in [kpi_ponta, kpi_fora_ponta, kpi_unificado] if kpi in df.index or kpi in df.columns]
-
+    _ = order_copy + [kpi for kpi in [kpi_ponta, kpi_fora_ponta, kpi_unificado] if kpi in df.index or kpi in df.columns]
 
     if kpi_ponta in df.index and kpi_fora_ponta in df.index:
         soma_energia = df.loc[kpi_ponta] + df.loc[kpi_fora_ponta]
@@ -111,17 +145,13 @@ def agregar_energia(df: pd.DataFrame, final_kpi_order: list) -> pd.DataFrame:
         df[kpi_unificado] = soma_energia
         df = df.drop(columns=[kpi_ponta, kpi_fora_ponta])
 
-
     # Reordena usando a ordem final original
     if set(df.index).issuperset(set(final_kpi_order)):
-         # Garante que apenas as colunas/índices que realmente existem no df sejam usados para reindexar
         valid_order = [item for item in final_kpi_order if item in df.index]
         return df.reindex(index=valid_order).dropna(how='all')
     elif set(df.columns).issuperset(set(final_kpi_order)):
         valid_order = [item for item in final_kpi_order if item in df.columns]
         return df.reindex(columns=valid_order).dropna(how='all')
-
-
     return df
 
 
@@ -185,7 +215,6 @@ def main():
     COR_FUNDO_SECUNDARIO = "#F8F9FB"
     COR_BORDA_CARD = "#E6EAF1"
     COR_TEXTO = "#333333"
-    COR_YTD_BG = "#E8EDFF"
     COR_CHIP_YTD = "#1140FE"
     COR_CHIP_FUT = "#B0B7C9"
     COR_TAB_ATIVA_BG = COR_PRIMARIA
@@ -230,8 +259,6 @@ def main():
         .stApp {{ background-color: var(--cor-fundo); color: var(--cor-texto); }}
         h1, h2, h3, h4 {{ color: var(--cor-primaria); }}
         [data-testid="stSidebar"] {{ background-color: var(--cor-fundo-secundario); }}
-        
-        /* Classes para controlar a visibilidade dos logos */
         .logo-light {{ display: block; }}
         .logo-dark {{ display: none; }}
 
@@ -265,7 +292,6 @@ def main():
                 --cor-tab-borda: #30363D;
                 --cor-tab-hover-bg: #21262D;
             }}
-            
             .logo-light {{ display: none; }}
             .logo-dark {{ display: block; }}
             [data-testid="stMetricLabel"], [data-testid="stMetricValue"] {{ color: var(--cor-texto) !important; }}
@@ -372,8 +398,7 @@ def main():
             
             st.markdown("##### 📈 Volume de Produção")
             df_volume_default = dados_salvos.get('volume', pd.DataFrame(0.0, index=["Volume Total"], columns=MESES))
-            st.data_editor(df_volume_default, key=f"{planta_selecionada}_volume_{i}", use_container_width=True, num_rows="fixed")
-            df_volume_editado = plant_state['dados'].get(i, {}).get('volume', df_volume_default)
+            df_volume_editado = st.data_editor(df_volume_default, key=f"{planta_selecionada}_volume_{i}", use_container_width=True, num_rows="fixed")
             df_volume_editado = corrige_decimais_df(df_volume_editado).astype(float)
             
             # --- LÓGICA CORRIGIDA ---
@@ -489,10 +514,7 @@ def main():
     st.header("5️⃣ Cálculo e Resultados")
     if st.button("🚀 Calcular Reforecast", type="primary", use_container_width=True, key=f"{planta_selecionada}_calc"):
         with st.spinner("Consolidando dados e executando cálculos..."):
-            if PLANTAS_CONFIG[planta_selecionada]['tipo'] == 'Cans':
-                final_kpi_order = KPIS_CANS
-            else:
-                final_kpi_order = KPIS_ENDS
+            final_kpi_order = KPIS_CANS if PLANTAS_CONFIG[planta_selecionada]['tipo'] == 'Cans' else KPIS_ENDS
             nomes_formatos = plant_state['nomes_formatos']
             volumes = {f: dados_formatos[f]['volume'] for f in nomes_formatos}
             aops = {f: dados_formatos[f]['aop'] for f in nomes_formatos}
@@ -504,34 +526,48 @@ def main():
                 resultados_por_formato[formato] = res
                 for kpi in res['bloqueado_por_kpi']:
                     bloqueios_por_kpi[kpi].add(formato)
+
             kpis_bloqueados_no_geral = {k for k, fset in bloqueios_por_kpi.items() if len(fset) > 0}
             if len(kpis_bloqueados_no_geral) > 0:
                 st.info("ℹ️ Para os KPIs com estouro em algum formato, o consolidado **Geral** foi suprimido para esses KPIs.")
+
             metas_finais_por_formato = {}
             avisos_por_formato = {}
+            overrides_por_formato = {}  # << NOVO: marca linhas (KPIs) que repetiram o AOP
+
             for formato in nomes_formatos:
                 res = resultados_por_formato[formato]
                 df_aop_formato = aops[formato]
                 df_aop_show_formato = aops_show[formato]
                 metas_a_exibir = res['metas_futuras'].copy()
                 avisos_performance = []
+                overridden_kpis = set()  # << NOVO
+
                 for kpi in kpis_da_planta:
                     coef_calculado = res['coef_anual_necessario'].get(kpi, 0.0)
                     coef_fy_meta = df_aop_formato.loc[kpi, 'FY']
                     if coef_fy_meta > 0 and coef_calculado > coef_fy_meta:
                         override_values = df_aop_show_formato.loc[kpi, colunas_futuro]
                         if override_values.sum() > 0:
-                            avisos_performance.append(f"💡 KPI **{kpi}** teve performance melhor que o AOP. Exibindo valores de 'AOP ou Ciclo Anterior'.")
+                            avisos_performance.append(
+                                f"💡 KPI **{kpi}** teve performance melhor que o AOP. Exibindo valores de 'AOP ou Ciclo Anterior'."
+                            )
                             metas_a_exibir.loc[kpi, colunas_futuro] = override_values
+                            overridden_kpis.add(kpi)  # << NOVO
+
                 metas_finais_por_formato[formato] = metas_a_exibir
                 avisos_por_formato[formato] = avisos_performance
+                overrides_por_formato[formato] = overridden_kpis  # << NOVO
+
             tab_labels = ['Geral'] + nomes_formatos
             abas = st.tabs(tab_labels)
-            with abas[0]: # ABA GERAL
+
+            # --- ABA GERAL ---
+            with abas[0]:
                 st.subheader("Resultado Geral")
+
                 if len(nomes_formatos) == 1:
                     formato_unico = nomes_formatos[0]
-                    st.subheader(f"(Espelho de {formato_unico})")
                     chips_meses(colunas_ytd, colunas_futuro)
                     if avisos_por_formato[formato_unico]:
                         st.write("")
@@ -541,20 +577,23 @@ def main():
                     res_unico = resultados_por_formato[formato_unico]
                     df_anual_row_fmt = mult_gas_series_as_row(res_unico['coef_anual_necessario'], fator_gas)
                     df_anual_row_fmt.index = ["Necessário (FY)"]
-                    
                     df_anual_renamed = renomear_gas_para_output(df_anual_row_fmt)
                     df_anual_agregado = agregar_energia(df_anual_renamed, final_kpi_order)
                     st.markdown(f"**📊 Valor Anual**")
                     st.dataframe(df_anual_agregado.style.applymap(highlight_zero).format(formatter="{:.3f}"))
-                    
+
                     metas_finais = metas_finais_por_formato[formato_unico]
                     metas_fmt_out = mult_gas_df(metas_finais, fator_gas)
-
                     metas_renamed = renomear_gas_para_output(metas_fmt_out)
                     metas_agregadas = agregar_energia(metas_renamed, final_kpi_order)
                     st.markdown(f"**📅 Metas Mensais Futuras**")
-                    st.dataframe(metas_agregadas[colunas_futuro].style.applymap(highlight_zero).format(formatter="{:.3f}"))
-                else: # Múltiplos formatos
+                    overrides_set = overrides_por_formato[formato_unico]
+                    styled = metas_agregadas[colunas_futuro].style.apply(
+                        style_metas_with_overrides, overridden_set=overrides_set, axis=None
+                    ).format(formatter="{:.3f}")
+                    st.dataframe(styled)
+
+                else:
                     chips_meses(colunas_ytd, colunas_futuro)
                     vol_total_df = pd.concat([volumes[f] for f in nomes_formatos]).groupby(level=0).sum()
                     realizado_ytd_total = pd.Series(0.0, index=kpis_da_planta)
@@ -575,7 +614,9 @@ def main():
                     geral_coef_anual = pd.Series(0.0, index=kpis_da_planta)
                     if vol_fut_total > 0:
                         for kpi in kpis_da_planta:
-                            if kpi in kpis_bloqueados_no_geral: geral_coef_anual[kpi] = 0.0; continue
+                            if kpi in kpis_bloqueados_no_geral: 
+                                geral_coef_anual[kpi] = 0.0
+                                continue
                             if is_spoilage(kpi):
                                 geral_coef_anual[kpi] = (saldo_restante[kpi] / vol_fut_total) * 100.0
                             else:
@@ -594,7 +635,9 @@ def main():
                     geral_metas = pd.DataFrame(0.0, index=kpis_da_planta, columns=MESES)
                     with np.errstate(divide='ignore', invalid='ignore'):
                         for kpi in kpis_da_planta:
-                            if kpi in kpis_bloqueados_no_geral: geral_metas.loc[kpi, colunas_futuro] = 0.0; continue
+                            if kpi in kpis_bloqueados_no_geral: 
+                                geral_metas.loc[kpi, colunas_futuro] = 0.0
+                                continue
                             soma_liquido_kpi_por_mes = pd.Series(0.0, index=colunas_futuro)
                             for formato in nomes_formatos:
                                 if formato in bloqueios_por_kpi.get(kpi, set()): continue
@@ -612,12 +655,14 @@ def main():
                             else:
                                 geral_metas.loc[kpi, colunas_futuro] = coef_mensal.fillna(0.0)
                     geral_metas_out = mult_gas_df(geral_metas, fator_gas)
-
                     geral_metas_renamed = renomear_gas_para_output(geral_metas_out)
                     geral_metas_agregadas = agregar_energia(geral_metas_renamed, final_kpi_order)
                     st.markdown("**📅 Metas Mensais Futuras (Consolidado)**")
-                    st.dataframe(geral_metas_agregadas[colunas_futuro].style.applymap(highlight_zero).format(formatter="{:.3f}"))
+                    # Consolidação não pinta verde por padrão (overrides são por formato)
+                    styled_cons = geral_metas_agregadas[colunas_futuro].style.apply(style_metas_basic, axis=None).format("{:.3f}")
+                    st.dataframe(styled_cons)
             
+            # --- ABAS POR FORMATO ---
             for pos, formato in enumerate(nomes_formatos, start=1):
                 with abas[pos]:
                     st.subheader(f"Formato: {formato}")
@@ -639,11 +684,15 @@ def main():
                     
                     metas_finais = metas_finais_por_formato[formato]
                     metas_fmt_out = mult_gas_df(metas_finais, fator_gas)
-                    
                     metas_formato_renamed = renomear_gas_para_output(metas_fmt_out)
                     metas_formato_agregadas = agregar_energia(metas_formato_renamed, final_kpi_order)
                     st.markdown(f"**📅 Metas Mensais Futuras ({formato})**")
-                    st.dataframe(metas_formato_agregadas[colunas_futuro].style.applymap(highlight_zero).format(formatter="{:.3f}"))
+                    overrides_set_f = overrides_por_formato[formato]
+                    styled_fmt = metas_formato_agregadas[colunas_futuro].style.apply(
+                        style_metas_with_overrides, overridden_set=overrides_set_f, axis=None
+                    ).format(formatter="{:.3f}")
+                    st.dataframe(styled_fmt)
+
             st.success("✅ Cálculos concluídos com sucesso!")
 
     st.markdown("---")
