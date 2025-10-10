@@ -5,6 +5,13 @@ import numpy as np
 from pathlib import Path
 import base64 # Importa a biblioteca para codificar imagens
 
+# --- NOVA FUNÇÃO HELPER (COLORCODE DE ZEROS NOS OUTPUTS) ---
+def highlight_zero(val):
+    try:
+        return "background-color: rgba(255, 0, 0, 0.18);" if float(val) == 0 else ""
+    except (TypeError, ValueError):
+        return ""
+
 # --- NOVA FUNÇÃO HELPER ---
 # Esta função lê um arquivo de imagem e o converte para texto (base64)
 def get_image_as_base64(path: Path):
@@ -365,42 +372,34 @@ def main():
             
             st.markdown("##### 📈 Volume de Produção")
             df_volume_default = dados_salvos.get('volume', pd.DataFrame(0.0, index=["Volume Total"], columns=MESES))
-            df_volume_editado = st.data_editor(df_volume_default, key=f"{planta_selecionada}_volume_{i}", use_container_width=True, num_rows="fixed")
+            st.data_editor(df_volume_default, key=f"{planta_selecionada}_volume_{i}", use_container_width=True, num_rows="fixed")
+            df_volume_editado = plant_state['dados'].get(i, {}).get('volume', df_volume_default)
             df_volume_editado = corrige_decimais_df(df_volume_editado).astype(float)
             
             # --- LÓGICA CORRIGIDA ---
             st.markdown("##### 🎯 Coeficientes YTD + Ciclo Anterior")
-            # 1. Carrega os dados 'aop' salvos no estado. Eles PODEM ter a coluna FY de um ciclo anterior.
             dados_salvos_aop = dados_salvos.get('aop', pd.DataFrame(index=kpis_da_planta, columns=MESES).fillna(0.0))
-            # 2. Cria uma cópia para o editor SEMPRE garantindo que não tenha a coluna FY para a exibição.
             df_aop_para_editar = dados_salvos_aop.copy()
             if 'FY' in df_aop_para_editar.columns:
                 df_aop_para_editar = df_aop_para_editar.drop(columns=['FY'])
-            # 3. O editor agora renderiza a tabela GARANTIDAMENTE sem a coluna FY.
             df_aop_editado = st.data_editor(df_aop_para_editar, key=f"{planta_selecionada}_aop_{i}", use_container_width=True, num_rows="fixed", height=420)
             df_aop_editado = corrige_decimais_df(df_aop_editado).astype(float)
 
             st.markdown("##### 🧷 AOP ou Ciclo Anterior (Opcional)")
-            # 4. Garante que os dados para a segunda tabela tenham a coluna FY, buscando dos dados salvos se necessário.
             df_aop_show_default = dados_salvos.get('aop_show', pd.DataFrame(index=kpis_da_planta, columns=MESES + ['FY']).fillna(0.0))
             if 'FY' not in df_aop_show_default.columns:
                 fy_values = dados_salvos_aop.get('FY', 0.0)
                 df_aop_show_default['FY'] = fy_values
-            # 5. Renderiza o segundo editor, que tem a coluna FY.
             df_aop_show_editado = st.data_editor(df_aop_show_default, key=f"{planta_selecionada}_aop_show_{i}", use_container_width=True, num_rows="fixed", height=420)
             df_aop_show_editado = corrige_decimais_df(df_aop_show_editado).astype(float)
 
-            # 6. Montagem final dos dados para salvar no estado.
-            # Pega os dados da primeira tabela (editada, sem FY)
             df_aop_final_para_salvar = df_aop_editado.copy()
-            # Adiciona a coluna FY vinda da segunda tabela (editada)
             df_aop_final_para_salvar['FY'] = df_aop_show_editado['FY']
 
-            # 7. Salva os dataframes corretos e completos no estado da sessão.
             plant_state['dados'][i] = {
                 'volume': df_volume_editado.fillna(0.0),
-                'aop': df_aop_final_para_salvar.fillna(0.0), # Salva a versão completa com FY
-                'aop_show': df_aop_show_editado.fillna(0.0)  # Salva a segunda tabela como está
+                'aop': df_aop_final_para_salvar.fillna(0.0),
+                'aop_show': df_aop_show_editado.fillna(0.0)
             }
             set_plant_store(planta_selecionada, plant_state)
             dados_formatos[formato_atual] = plant_state['dados'][i]
@@ -546,7 +545,7 @@ def main():
                     df_anual_renamed = renomear_gas_para_output(df_anual_row_fmt)
                     df_anual_agregado = agregar_energia(df_anual_renamed, final_kpi_order)
                     st.markdown(f"**📊 Valor Anual**")
-                    st.dataframe(df_anual_agregado.style.format(formatter="{:.3f}"))
+                    st.dataframe(df_anual_agregado.style.applymap(highlight_zero).format(formatter="{:.3f}"))
                     
                     metas_finais = metas_finais_por_formato[formato_unico]
                     metas_fmt_out = mult_gas_df(metas_finais, fator_gas)
@@ -554,7 +553,7 @@ def main():
                     metas_renamed = renomear_gas_para_output(metas_fmt_out)
                     metas_agregadas = agregar_energia(metas_renamed, final_kpi_order)
                     st.markdown(f"**📅 Metas Mensais Futuras**")
-                    st.dataframe(metas_agregadas[colunas_futuro].style.format(formatter="{:.3f}"))
+                    st.dataframe(metas_agregadas[colunas_futuro].style.applymap(highlight_zero).format(formatter="{:.3f}"))
                 else: # Múltiplos formatos
                     chips_meses(colunas_ytd, colunas_futuro)
                     vol_total_df = pd.concat([volumes[f] for f in nomes_formatos]).groupby(level=0).sum()
@@ -587,7 +586,7 @@ def main():
                     df_anual_geral_renamed = renomear_gas_para_output(df_anual_row_geral)
                     df_anual_geral_agregado = agregar_energia(df_anual_geral_renamed, final_kpi_order)
                     st.markdown("**📊 Valor Anual (Consolidado)**")
-                    st.dataframe(df_anual_geral_agregado.style.format(formatter="{:.3f}"))
+                    st.dataframe(df_anual_geral_agregado.style.applymap(highlight_zero).format(formatter="{:.3f}"))
                     
                     volumes_producao_futuros_total_por_mes = pd.Series(0.0, index=colunas_futuro)
                     for formato in nomes_formatos:
@@ -617,7 +616,7 @@ def main():
                     geral_metas_renamed = renomear_gas_para_output(geral_metas_out)
                     geral_metas_agregadas = agregar_energia(geral_metas_renamed, final_kpi_order)
                     st.markdown("**📅 Metas Mensais Futuras (Consolidado)**")
-                    st.dataframe(geral_metas_agregadas[colunas_futuro].style.format(formatter="{:.3f}"))
+                    st.dataframe(geral_metas_agregadas[colunas_futuro].style.applymap(highlight_zero).format(formatter="{:.3f}"))
             
             for pos, formato in enumerate(nomes_formatos, start=1):
                 with abas[pos]:
@@ -636,7 +635,7 @@ def main():
                     df_anual_formato_renamed = renomear_gas_para_output(df_anual_row_fmt)
                     df_anual_formato_agregado = agregar_energia(df_anual_formato_renamed, final_kpi_order)
                     st.markdown(f"**📊 Valor Anual ({formato})**")
-                    st.dataframe(df_anual_formato_agregado.style.format(formatter="{:.3f}"))
+                    st.dataframe(df_anual_formato_agregado.style.applymap(highlight_zero).format(formatter="{:.3f}"))
                     
                     metas_finais = metas_finais_por_formato[formato]
                     metas_fmt_out = mult_gas_df(metas_finais, fator_gas)
@@ -644,7 +643,7 @@ def main():
                     metas_formato_renamed = renomear_gas_para_output(metas_fmt_out)
                     metas_formato_agregadas = agregar_energia(metas_formato_renamed, final_kpi_order)
                     st.markdown(f"**📅 Metas Mensais Futuras ({formato})**")
-                    st.dataframe(metas_formato_agregadas[colunas_futuro].style.format(formatter="{:.3f}"))
+                    st.dataframe(metas_formato_agregadas[colunas_futuro].style.applymap(highlight_zero).format(formatter="{:.3f}"))
             st.success("✅ Cálculos concluídos com sucesso!")
 
     st.markdown("---")
