@@ -7,7 +7,6 @@ import base64 # Importa a biblioteca para codificar imagens
 
 # --- HELPERS DE ESTILO ---
 def highlight_zero(val):
-    """Pinta de vermelho suave células == 0 (para as tabelas de Valor Anual)."""
     try:
         # Tenta converter para float e verifica se é zero
         return "background-color: rgba(255, 0, 0, 0.18);" if float(val) == 0 else ""
